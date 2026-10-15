@@ -3,13 +3,35 @@
 
 const { API_BASES } = window;
 
+// 密钥仅保留在当前页面内存，不写 URL 或浏览器持久存储。
+let gatewayApiKey = '';
+window.gatewayAuth = {
+  getKey: () => gatewayApiKey,
+  setKey: (key) => { gatewayApiKey = key.trim(); },
+  wsProtocols: () => {
+    if (!gatewayApiKey) return [];
+    const bytes = new TextEncoder().encode(gatewayApiKey);
+    const encoded = btoa(String.fromCharCode(...bytes))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    return ['spacemit-gateway', 'spacemit-api-key.' + encoded];
+  },
+};
+window.gatewayFetch = (url, opts = {}) => {
+  const headers = new Headers(opts.headers);
+  const origin = new URL(url, location.href).origin;
+  if (gatewayApiKey && Object.values(API_BASES).some(base => new URL(base, location.href).origin === origin)) {
+    headers.set('X-API-Key', gatewayApiKey);
+  }
+  return fetch(url, { ...opts, headers });
+};
+
 // ---------------- 通用请求 ----------------
 async function request(base, path, opts = {}) {
   const url = base + path;
   try {
-    const res = await fetch(url, {
-      headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+    const res = await window.gatewayFetch(url, {
       ...opts,
+      headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
     });
     if (!res.ok) {
       let detail = `${res.status} ${res.statusText}`;
@@ -55,7 +77,7 @@ window.asrApi = {
     if (opts.punctuation !== undefined) form.append('punctuation', String(opts.punctuation));
     if (opts.enable_emotion !== undefined) form.append('enable_emotion', String(opts.enable_emotion));
     if (opts.sample_rate) form.append('sample_rate', String(opts.sample_rate));
-    return fetch(API_BASES.asr + '/v1/asr/recognize', { method: 'POST', body: form })
+    return window.gatewayFetch(API_BASES.asr + '/v1/asr/recognize', { method: 'POST', body: form })
       .then(r => r.json());
   },
   createSession: (body) => request(API_BASES.asr, '/v1/asr/stream/session',
@@ -92,7 +114,7 @@ window.ttsApi = {
   getEngine:    () => request(API_BASES.tts, '/v1/tts/engine'),
   updateEngine: (body) => request(API_BASES.tts, '/v1/tts/engine',
                    { method: 'PATCH', body: JSON.stringify(body) }),
-  synthesize:   (body) => fetch(API_BASES.tts + '/v1/tts/synthesize', {
+  synthesize:   (body) => window.gatewayFetch(API_BASES.tts + '/v1/tts/synthesize', {
                    method: 'POST',
                    headers: { 'Content-Type': 'application/json' },
                    body: JSON.stringify(body),
@@ -129,7 +151,7 @@ window.ttsApi = {
   getTask:      (task_id) => request(API_BASES.tts, '/v1/tts/tasks/' + encodeURIComponent(task_id)),
   cancelTask:   (task_id) => request(API_BASES.tts, '/v1/tts/tasks/' + encodeURIComponent(task_id),
                    { method: 'DELETE' }),
-  getTaskAudio: (task_id) => fetch(API_BASES.tts + '/v1/tts/tasks/' + encodeURIComponent(task_id) + '/audio')
+  getTaskAudio: (task_id) => window.gatewayFetch(API_BASES.tts + '/v1/tts/tasks/' + encodeURIComponent(task_id) + '/audio')
                    .then(r => { if (!r.ok) throw new Error(r.status + ' ' + r.statusText); return r.blob(); }),
   listLexicons: () => request(API_BASES.tts, '/v1/tts/lexicons'),
   createLexicon:(body) => request(API_BASES.tts, '/v1/tts/lexicons',
@@ -158,14 +180,14 @@ window.vadApi = {
     const form = new FormData();
     form.append('file', audioBlob, 'audio.wav');
     const qs = opts.sample_rate ? '?sample_rate=' + opts.sample_rate : '';
-    return fetch(API_BASES.vad + '/v1/vad/analyze' + qs, { method: 'POST', body: form })
+    return window.gatewayFetch(API_BASES.vad + '/v1/vad/analyze' + qs, { method: 'POST', body: form })
       .then(r => { if (!r.ok) throw new Error(r.status + ' ' + r.statusText); return r.json(); });
   },
   segments:     (audioBlob, opts = {}) => {
     const form = new FormData();
     form.append('file', audioBlob, 'audio.wav');
     const qs = opts.sample_rate ? '?sample_rate=' + opts.sample_rate : '';
-    return fetch(API_BASES.vad + '/v1/vad/segments' + qs, { method: 'POST', body: form })
+    return window.gatewayFetch(API_BASES.vad + '/v1/vad/segments' + qs, { method: 'POST', body: form })
       .then(r => { if (!r.ok) throw new Error(r.status + ' ' + r.statusText); return r.json(); });
   },
   loadModel:    (model_id) => request(API_BASES.vad, '/v1/vad/models/load',
@@ -220,7 +242,7 @@ window.visionApi = {
     if (opts && opts.conf != null && opts.conf !== '') qs.set('conf', String(opts.conf));
     if (opts && opts.iou != null && opts.iou !== '') qs.set('iou', String(opts.iou));
     const suffix = qs.toString() ? ('?' + qs.toString()) : '';
-    return fetch(API_BASES.vision + '/v1/vision/inference' + suffix, { method: 'POST', body: form })
+    return window.gatewayFetch(API_BASES.vision + '/v1/vision/inference' + suffix, { method: 'POST', body: form })
       .then(async r => {
         const json = await r.json();
         if (!r.ok) throw new Error(json.message || json.detail || `${r.status} ${r.statusText}`);
@@ -234,7 +256,7 @@ window.visionApi = {
     form.append('type', type);
     if (imageFileB) form.append('file_b', imageFileB);
     const qs = model_id ? '?model_id=' + encodeURIComponent(visionBackendModelId(model_id)) : '';
-    return fetch(API_BASES.vision + '/v1/vision/feature' + qs, { method: 'POST', body: form })
+    return window.gatewayFetch(API_BASES.vision + '/v1/vision/feature' + qs, { method: 'POST', body: form })
       .then(async r => {
         const json = await r.json();
         if (!r.ok) throw new Error(json.message || json.detail || `${r.status} ${r.statusText}`);
@@ -267,7 +289,7 @@ window.systemApi = {
 
 async function* chatCompletionStream(base, path, body) {
   const t0 = performance.now();
-  const res = await fetch(base + path, {
+  const res = await window.gatewayFetch(base + path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...body, stream: true }),

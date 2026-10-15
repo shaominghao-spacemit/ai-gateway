@@ -1,13 +1,27 @@
 #!/usr/bin/make -f
-# You must remove unused comment lines for the released package.
-#export DH_VERBOSE = 1
-#export DEB_BUILD_MAINT_OPTIONS = hardening=+all
-#export DEB_CFLAGS_MAINT_APPEND  = -Wall -pedantic
-#export DEB_LDFLAGS_MAINT_APPEND = -Wl,--as-needed
 
 %:
 	dh $@
 
+override_dh_auto_build:
+	python3 scripts/prepare-runtime.py
+
+override_dh_auto_install:
+
+# 已有单测由宿主及板端验收跑，不让 dh 尝试编译非本项目的 Makefile。
+override_dh_auto_test:
+
+override_dh_gencontrol:
+	python3 -c 'import sys; print("gateway:Python=python3 (>= %d.%d), python3 (<< %d.%d)" % (sys.version_info.major, sys.version_info.minor, sys.version_info.major, sys.version_info.minor+1))' >> debian/spacemit-ai-gateway.substvars
+	dh_gencontrol
+
 override_dh_installsystemd:
 	dh_installsystemd
 	dh_installsystemd --name=spacemit-ai-gateway-frontend
+
+# dh_strip_nondeterminism rewrites wheel ZIP metadata after dh_install.  Refresh
+# both pip hashes and the bundle manifest after all staging transformations.
+override_dh_builddeb:
+	python3 scripts/prepare-runtime.py --refresh debian/spacemit-ai-gateway/opt/spacemit-ai-gateway/runtime
+	python3 debian/runtime.py validate debian/spacemit-ai-gateway/opt/spacemit-ai-gateway/runtime >/dev/null
+	dh_builddeb

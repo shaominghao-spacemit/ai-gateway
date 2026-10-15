@@ -95,7 +95,7 @@ function VADTryPage({ model, onBack }) {
 
       if (mode === 'realtime') {
         const wsUrl = vadApi.streamUrl() + '?sample_rate=16000';
-        const ws = new WebSocket(wsUrl);
+        const ws = new WebSocket(wsUrl, window.gatewayAuth.wsProtocols());
         wsRef.current = ws;
         ws.onmessage = (e) => {
           try {

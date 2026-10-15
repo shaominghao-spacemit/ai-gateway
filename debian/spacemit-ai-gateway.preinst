@@ -1,0 +1,17 @@
+#!/bin/sh
+set -e
+case "$1" in
+    install|upgrade)
+        # unpack 会先删除旧包的 /opt 配置，必须在此之前备份。
+        legacy=/opt/spacemit-ai-gateway/configs/base.yaml
+        backup=/etc/spacemit-ai-gateway/legacy-base.yaml
+        if [ -f "$legacy" ] && [ ! -e "$backup" ]; then
+            install -d -m 0755 /etc/spacemit-ai-gateway
+            (umask 077; cp -p "$legacy" "$backup")
+        fi
+        ;;
+    abort-upgrade) ;;
+    *) echo "Unexpected preinst argument: $1" >&2; exit 1 ;;
+esac
+#DEBHELPER#
+exit 0

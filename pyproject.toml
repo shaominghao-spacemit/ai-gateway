@@ -24,7 +24,7 @@ dependencies = [
     "aiosqlite>=0.19.0",
     "python-multipart>=0.0.26",
 
-    # model_zoo wheels; OpenCV itself is provided by the system opencv-spacemit package.
+    # model_zoo wheels; the Debian bundle pins the platform OpenCV Python wheel.
     "spacemit-asr>=1.0.2",
     "spacemit-tts>=1.0.0",
     "spacemit-vad>=1.0.0",

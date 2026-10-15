@@ -389,7 +389,7 @@ function VisionTryPage({ model, onBack: _onBack }) {
         wsQs.set('iou', String(iou));
       }
       const wsUrl = visionApi.streamUrl() + '?' + wsQs.toString();
-      const ws = new WebSocket(wsUrl);
+      const ws = new WebSocket(wsUrl, window.gatewayAuth.wsProtocols());
       wsRef.current = ws;
 
       ws.onopen = () => {

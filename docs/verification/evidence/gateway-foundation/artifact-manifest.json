@@ -1,0 +1,32 @@
+{
+  "architecture": "riscv64",
+  "artifact_id": "gateway-2985cf14a56b",
+  "attempt_id": "att-2985cf14a56b4901838f07db8683a74f",
+  "board_id": "K3DEB1-3",
+  "dependency_digest": "sha256:e3b0c44298fc1c149afbf4c8996fb924",
+  "files": [
+    {
+      "board_id": "K3DEB1-3",
+      "location": "board",
+      "name": "spacemit-ai-gateway.deb",
+      "remote_path": "/home/bianbu/bibit-build/artifacts/gateway-2985cf14a56b/spacemit-ai-gateway.deb",
+      "sha256": "bdceeaf0110ed20ebcf9cb814d7c0c7bed40ec46b76bb1ea20800701d0c1e997",
+      "size": 134568824
+    },
+    {
+      "board_id": "K3DEB1-3",
+      "location": "board",
+      "name": "test-device-lifecycle.py",
+      "remote_path": "/home/bianbu/bibit-build/artifacts/gateway-2985cf14a56b/test-device-lifecycle.py",
+      "sha256": "9469e814fa2aee23579e3962caa6df2632b5cfba3a0cf5ca362c2c39ef7ef0c2",
+      "size": 30958
+    }
+  ],
+  "recipe": "gateway",
+  "schema_version": 1,
+  "source_branch": "fix/gateway-foundation",
+  "source_digest": "691796d5ad966de3bf00ab28eb98710fa461b34ef8973ed38b859f1cda306312",
+  "source_head": "47681187722d7ebdfa7923739827e1c0aaf9f727",
+  "source_workspace": "/home/shaominghao/CodeSpace/bibit-workspace/.integration-worktrees/gateway-foundation",
+  "toolchain_digest": "sha256:f75bda5464b7dd7deca2d88bfe1b0f0f"
+}

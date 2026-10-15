@@ -11,15 +11,10 @@
 
 from __future__ import annotations
 
-import ipaddress
 import logging
-from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import JSONResponse
 
 from ..domains.asr import api as asr_api
 from ..domains.asr import stream as asr_stream
@@ -40,6 +35,7 @@ try:
 except ImportError:
     vision_api = None  # type: ignore[assignment]
     logging.getLogger(__name__).warning("Vision domain not available (missing dependencies), skipping")
+from ..gateway.auth import GatewayAuthMiddleware
 from ..gateway.errors import setup_exception_handlers
 from ..gateway.health import router as health_router
 from ..gateway.error_codes import router as error_codes_router
@@ -68,7 +64,7 @@ app = FastAPI(
         "- VLM `/v1/vlm/*`  视觉语言模型（OpenAI 兼容）\n"
         "- Vision `/v1/vision/*`  视觉推理（HTTP + WS 流式）\n\n"
 
-        "鉴权：若启用则在请求头携带 `X-API-Key`；WS 需先 POST `/stream/session` 取 `session_id`。"
+        "鉴权：启用时写请求携带 `X-API-Key` 或 `Authorization: Bearer`；ASR/TTS WS 使用 `/stream/session` 签发的 `session_id`，浏览器 WS 也可通过子协议携带密钥。"
     ),
     lifespan=lifespan,
     docs_url="/docs",
@@ -76,6 +72,7 @@ app = FastAPI(
     openapi_url="/openapi.json",
 )
 
+app.add_middleware(GatewayAuthMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -86,65 +83,6 @@ app.add_middleware(
 )
 
 
-def _load_whitelist_file(path: str | None) -> list[str]:
-    if not path:
-        return []
-    p = Path(path)
-    if not p.exists():
-        return []
-    entries = []
-    for line in p.read_text().splitlines():
-        line = line.strip()
-        if line and not line.startswith("#"):
-            entries.append(line)
-    return entries
-
-
-class IPWhitelistMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, static_entries: list[str], whitelist_file: str | None):
-        super().__init__(app)
-        self._static = [ipaddress.ip_network(n, strict=False) for n in static_entries]
-        self._file = whitelist_file
-        self._file_networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
-        self._file_mtime: float = 0
-        self._reload_file()
-
-    def _reload_file(self):
-        if not self._file:
-            return
-        p = Path(self._file)
-        if not p.exists():
-            self._file_networks = []
-            self._file_mtime = 0
-            return
-        mtime = p.stat().st_mtime
-        if mtime != self._file_mtime:
-            self._file_mtime = mtime
-            self._file_networks = [
-                ipaddress.ip_network(n, strict=False) for n in _load_whitelist_file(self._file)
-            ]
-
-    async def dispatch(self, request: Request, call_next):
-        if request.method == "OPTIONS":
-            return await call_next(request)
-        self._reload_file()
-        client_ip = ipaddress.ip_address(request.client.host)
-        all_networks = self._static + self._file_networks
-        if not any(client_ip in net for net in all_networks):
-            return JSONResponse(
-                status_code=403,
-                content={"error": "forbidden", "message": f"IP {client_ip} not allowed"},
-            )
-        return await call_next(request)
-
-
-_wl_entries = settings.auth.ip_whitelist + _load_whitelist_file(settings.auth.ip_whitelist_file)
-if settings.auth.enabled and (_wl_entries or settings.auth.ip_whitelist_file):
-    app.add_middleware(
-        IPWhitelistMiddleware,
-        static_entries=settings.auth.ip_whitelist,
-        whitelist_file=settings.auth.ip_whitelist_file,
-    )
 
 setup_exception_handlers(app)
 

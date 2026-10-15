@@ -1,0 +1,11 @@
+{
+  "unauthenticated_status": 401,
+  "authenticated_unknown_model_status": 404,
+  "password_input": true,
+  "no_persistent_key": true,
+  "page_errors": [],
+  "refresh_clears_key": true,
+  "screenshot": "docs/assets/gateway-console-auth-host.png",
+  "external_assets": "same published versions from npm mirror; browser route replaces unavailable CDN transport",
+  "google_fonts": "blocked for this test"
+}

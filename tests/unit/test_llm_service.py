@@ -7,13 +7,16 @@ Run:
     uv run pytest tests/unit/test_llm_service.py -v
 """
 
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 import socket
+import shutil
 import subprocess
 import sys
 import tempfile
 import time
+import threading
 import uuid
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
@@ -55,6 +58,7 @@ def server():
     cfg["llm"]["backend"] = None
     cfg["llm"].setdefault("storage", {})
     cfg["llm"]["storage"]["db_path"] = db_path
+    cfg["llm"]["storage"]["models_dir"] = str(Path(tmp_dir.name) / "models")
 
     # 禁用 embed 和 rerank 的自动加载
     cfg.setdefault("embed", {})
@@ -120,6 +124,40 @@ def server():
 def client(server):
     with httpx.Client(base_url=server["base_url"], timeout=10) as c:
         yield c
+
+
+@pytest.fixture
+def download_url():
+    """让下载保持进行中，避免公网速度和用户缓存影响状态断言。"""
+    stopped = threading.Event()
+    started = threading.Event()
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_HEAD(self):
+            self.send_response(200)
+            self.send_header("Content-Length", "1048576")
+            self.end_headers()
+
+        def do_GET(self):
+            if self.path.endswith(".md5"):
+                self.send_error(404)
+                return
+            self.do_HEAD()
+            started.set()
+            stopped.wait(60)
+
+        def log_message(self, *args):
+            pass
+
+    with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            yield f"http://127.0.0.1:{server.server_port}/pending.gguf", started
+        finally:
+            stopped.set()
+            server.shutdown()
+            thread.join()
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -261,14 +299,15 @@ def test_download_progress_not_found(client):
 
 # download start / cancel ─────────────────────────────────────────────────────
 
-def test_download_start_and_cancel(client):
+def test_download_start_and_cancel(client, download_url):
+    url, started = download_url
     uid = uuid.uuid4().hex[:8]
     model = f"test-dl-{uid}"
     # 注册一个带 URL 的模型
     r = client.post("/v1/llm/models/register", json={
         "model": model,
         "source_type": "local_url",
-        "url": "https://huggingface.co/ggml-org/models/resolve/main/tinyllamas/stories260K.gguf",
+        "url": url,
     })
     assert_ok(r)
 
@@ -276,6 +315,7 @@ def test_download_start_and_cancel(client):
     r = client.post(f"/v1/llm/models/{model}/download")
     assert_ok(r)
     assert r.json()["status"] == "downloading"
+    assert started.wait(5), "local model transfer did not start"
 
     # 状态应为 downloading
     r = client.get(f"/v1/llm/models/{model}/download")
@@ -296,15 +336,17 @@ def test_download_start_and_cancel(client):
     assert body["progress"] == 0.0
 
 
-def test_download_start_already_downloading(client):
+def test_download_start_already_downloading(client, download_url):
+    url, started = download_url
     uid = uuid.uuid4().hex[:8]
     model = f"test-dl2-{uid}"
     client.post("/v1/llm/models/register", json={
         "model": model,
         "source_type": "local_url",
-        "url": "https://huggingface.co/ggml-org/models/resolve/main/tinyllamas/stories260K.gguf",
+        "url": url,
     })
     client.post(f"/v1/llm/models/{model}/download")
+    assert started.wait(5), "local model transfer did not start"
     r = client.post(f"/v1/llm/models/{model}/download")
     assert_err(r, 400)
     assert "already downloading" in r.json()["message"]
@@ -337,15 +379,17 @@ def test_unload_nonexistent(client):
     assert_err(r, 400)
 
 
-def test_load_downloading_model(client):
+def test_load_downloading_model(client, download_url):
+    url, started = download_url
     uid = uuid.uuid4().hex[:8]
     model = f"test-loading-{uid}"
     client.post("/v1/llm/models/register", json={
         "model": model,
         "source_type": "local_url",
-        "url": "https://huggingface.co/ggml-org/models/resolve/main/tinyllamas/stories260K.gguf",
+        "url": url,
     })
     client.post(f"/v1/llm/models/{model}/download")
+    assert started.wait(5), "local model transfer did not start"
     r = client.post("/v1/llm/models/load", json={"model": model})
     assert_err(r, 400)
     assert "downloading" in r.json()["message"]
@@ -540,6 +584,8 @@ def _ensure_downloaded(client, model: str, download_timeout: int = 300) -> bool:
 @pytest.fixture(scope="module")
 def loaded_model_a(client):
     """加载 MODEL_A 并切换到该模型，测试完成后 unload。"""
+    if shutil.which("llama-server") is None:
+        pytest.skip("real inference requires llama-server")
     if not _ensure_downloaded(client, MODEL_A):
         pytest.skip(f"Model {MODEL_A} download failed or timed out")
 
