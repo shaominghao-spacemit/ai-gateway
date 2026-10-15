@@ -4,11 +4,21 @@ After=network.target
 
 [Service]
 Type=simple
-User=root
+User=spacemit-ai-gateway
+Group=spacemit-ai-gateway
+Environment=HOME=/var/lib/spacemit-ai-gateway
+Environment=PYTHONNOUSERSITE=1
 Environment=PATH=/opt/spacemit-ai-gateway/venv/bin:/usr/local/bin:/usr/bin:/bin
-Environment=SPACEMIT_AI_GATEWAY_CONFIG=/opt/spacemit-ai-gateway/configs/base.yaml
+Environment=SPACEMIT_AI_GATEWAY_CONFIG=/etc/spacemit-ai-gateway/base.yaml
+EnvironmentFile=-/etc/spacemit-ai-gateway/credentials.env
+EnvironmentFile=-/etc/spacemit-ai-gateway/environment
 ExecStart=/opt/spacemit-ai-gateway/venv/bin/spacemit-ai-gateway
-WorkingDirectory=/opt/spacemit-ai-gateway
+WorkingDirectory=/var/lib/spacemit-ai-gateway
+StateDirectory=spacemit-ai-gateway
+StateDirectoryMode=0750
+UMask=0027
+NoNewPrivileges=true
+ProtectSystem=full
 Restart=on-failure
 RestartSec=5
 

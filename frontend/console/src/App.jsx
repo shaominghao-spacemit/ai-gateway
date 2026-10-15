@@ -40,6 +40,7 @@ function App() {
     ...readStoredTweaks(),
   }));
   const [tweaksOpen, setTweaksOpen] = useStateApp(false);
+  const [gatewayKey, setGatewayKey] = useStateApp(() => window.gatewayAuth.getKey());
   const [theme, setTheme] = useStateApp(() => localStorage.getItem('spacemit-ai-gateway-theme') || 'system');
   const [lang, setLang] = useStateApp(() => window.__lang || 'zh');
 
@@ -137,6 +138,17 @@ function App() {
       <main className="main">
         <div className="top-bar">
           <div style={{ flex: 1 }}/>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            <span style={{ fontSize: 12, whiteSpace: 'nowrap' }}>API Key</span>
+            <input className="input" type="password" autoComplete="off"
+              aria-label="Gateway API Key" placeholder="输入网关密钥"
+              title="仅保留在当前页面内存，刷新后需重新输入"
+              style={{ width: 180, minWidth: 60, maxWidth: '25vw' }} value={gatewayKey}
+              onChange={event => {
+                setGatewayKey(event.target.value);
+                window.gatewayAuth.setKey(event.target.value);
+              }}/>
+          </label>
           <button className="theme-toggle"
             onClick={toggleLang} title={lang === 'zh' ? 'Switch to English' : '切换到中文'}>
             <span style={{ fontSize: 12, fontWeight: 600 }}>{lang === 'zh' ? 'En' : '中'}</span>

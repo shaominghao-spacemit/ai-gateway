@@ -1,0 +1,18 @@
+{
+  "board": "K3DEB1-3",
+  "source": "独立 SSH 只读检查；与实机验收脚本分开运行",
+  "dpkg_audit": {
+    "exit": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "gateway_package": {
+    "version": "0.0.19",
+    "status": "install ok installed"
+  },
+  "services": {
+    "spacemit-ai-gateway": "active",
+    "spacemit-ai-gateway-frontend": "active"
+  },
+  "recorded_at": "2026-10-15T06:48:39.472914+00:00"
+}

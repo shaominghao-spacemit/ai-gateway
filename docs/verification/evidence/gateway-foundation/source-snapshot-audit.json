@@ -1,0 +1,7 @@
+{
+  "snapshot": "snapshot-691796d5ad966de3bf00ab28eb98710fa461b34ef8973ed38b859f1cda306312.tar",
+  "checked_files": 251,
+  "issue_count": 0,
+  "issues": [],
+  "excluded": "仅文档与交付元数据；运行代码、配置、打包、前端和测试逐字节比较"
+}

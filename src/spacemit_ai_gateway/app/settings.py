@@ -12,13 +12,13 @@ from typing import Any, Optional
 
 import yaml
 from pydantic import BaseModel, Field
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 
 class AppConfig(BaseModel):
     name: str = "SpacemiT AI Gateway"
     version: str = "0.2.0"
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"
     port: int = 18790
     debug: bool = False
 
@@ -248,31 +248,48 @@ class Settings(BaseSettings):
     download: DownloadConfig = Field(default_factory=DownloadConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
-    class Config:
-        env_prefix = "SPACEMIT_AI_GATEWAY_"
-        env_nested_delimiter = "__"
+    model_config = SettingsConfigDict(
+        env_prefix="SPACEMIT_AI_GATEWAY_", env_nested_delimiter="__"
+    )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        # Pydantic 会递归合并来源，环境覆盖单个叶子时保留 YAML 的其它字段。
+        return env_settings, init_settings, dotenv_settings, file_secret_settings
+
+
+def _parse_yaml_config(text: str, source: str) -> dict:
+    try:
+        config = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise ValueError(f"Invalid gateway YAML configuration: {source}") from exc
+    if not isinstance(config, dict):
+        raise ValueError(f"Gateway configuration must be a YAML mapping: {source}")
+    return config
 
 
 def _load_yaml_file(config_path: Path) -> dict:
-    with open(config_path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+    return _parse_yaml_config(config_path.read_text(encoding="utf-8"), str(config_path))
 
 
 def load_yaml_config(config_path: Optional[str] = None) -> dict:
     if config_path is None:
         config_path = os.getenv("SPACEMIT_AI_GATEWAY_CONFIG")
 
-    if config_path:
-        explicit_path = Path(config_path).expanduser()
-        if explicit_path.exists():
-            return _load_yaml_file(explicit_path)
-        return {}
+    if config_path is not None:
+        if not config_path.strip():
+            raise ValueError("SPACEMIT_AI_GATEWAY_CONFIG must name a YAML file")
+        return _load_yaml_file(Path(config_path).expanduser())
 
     package_config = resources.files("spacemit_ai_gateway").joinpath("configs", "base.yaml")
-    if package_config.is_file():
-        return yaml.safe_load(package_config.read_text(encoding="utf-8")) or {}
-
-    return {}
+    return _parse_yaml_config(package_config.read_text(encoding="utf-8"), str(package_config))
 
 
 @lru_cache

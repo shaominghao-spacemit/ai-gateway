@@ -56,6 +56,9 @@ class SileroBackend(VadBackend):
             engine_config.min_speech_duration_ms = config.min_speech_ms
             engine_config.min_silence_duration_ms = config.max_silence_ms
             self._engine = spacemit_vad.VadEngine(engine_config)
+            # SDK 可能只记录初始化错误而不抛异常，必须检查真实状态。
+            if not self._engine.is_initialized:
+                raise RuntimeError("VAD engine is not initialized")
             self._state = BackendReadyState.WARMING_UP
         except Exception as e:
             # SDK 已导入成功，初始化失败要如实报错，不能用 mock 假结果冒充成功
@@ -72,7 +75,7 @@ class SileroBackend(VadBackend):
         return self._state
 
     async def warmup(self) -> None:
-        self._state = BackendReadyState.READY
+        self._state = BackendReadyState.DEGRADED if self._mock else BackendReadyState.READY
 
     async def analyze(self, audio: bytes, sample_rate: int) -> VadAnalysis:
         if not audio:

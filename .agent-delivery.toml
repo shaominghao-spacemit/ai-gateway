@@ -1,0 +1,14 @@
+[project]
+name = "spacemit-ai-gateway"
+
+[verify]
+regression = ["sh", "-c", "PYTHONPATH=src uv run --no-project --isolated --with-requirements tests/requirements-host.txt python -m pytest tests -q"]
+
+[board]
+adapter = "bibit-dev"
+
+[policy]
+required_items = ["machine"]
+
+[push]
+direct_main = false

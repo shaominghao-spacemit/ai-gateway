@@ -1,0 +1,45 @@
+{
+  "result": "ok",
+  "sha256": "bdceeaf0110ed20ebcf9cb814d7c0c7bed40ec46b76bb1ea20800701d0c1e997",
+  "restored": true,
+  "checks": [
+    "preflight-backup-rollback-deb",
+    "postinst-configure-reentry",
+    "packaged-credentials-authentication",
+    "nonroot-loopback-eight-domain-health",
+    "r2-program-readonly-data-sqlite-writable",
+    "real-vad-load-inference",
+    "administrator-auth-config-environment-dropin-data",
+    "r6-failed-model-degrades-health",
+    "real-vad-load-inference",
+    "r6-real-model-reload-health-recovered",
+    "real-vad-load-inference",
+    "health-failure-kill-auto-recovery",
+    "upgrade-preserves-administrator-state",
+    "remove-preserves-administrator-state",
+    "real-vad-load-inference",
+    "reinstall-purge-preserves-dropin-and-data",
+    "original-package-files-data-services-restored",
+    "protected-package-inventory-unchanged"
+  ],
+  "protected_packages_before": [
+    "bibit-voice\t0.1.8\tinstall ok installed",
+    "libonnx1t64:riscv64\t1.20.0-1\tinstall ok installed",
+    "libonnxruntime-providers:riscv64\t1.23.2+dfsg-6ubuntu1\tinstall ok installed",
+    "libonnxruntime1.23:riscv64\t1.23.2+dfsg-6ubuntu1\tinstall ok installed",
+    "libsherpa-onnx-c-api\t0.1.8\tinstall ok installed",
+    "llama.cpp-tools-spacemit\t0.1.9\tinstall ok installed",
+    "python3-spacemit-ort\t2.0.7+2\tinstall ok installed",
+    "spacemit-onnxruntime\t2.0.7+2\tinstall ok installed"
+  ],
+  "protected_packages_after": [
+    "bibit-voice\t0.1.8\tinstall ok installed",
+    "libonnx1t64:riscv64\t1.20.0-1\tinstall ok installed",
+    "libonnxruntime-providers:riscv64\t1.23.2+dfsg-6ubuntu1\tinstall ok installed",
+    "libonnxruntime1.23:riscv64\t1.23.2+dfsg-6ubuntu1\tinstall ok installed",
+    "libsherpa-onnx-c-api\t0.1.8\tinstall ok installed",
+    "llama.cpp-tools-spacemit\t0.1.9\tinstall ok installed",
+    "python3-spacemit-ort\t2.0.7+2\tinstall ok installed",
+    "spacemit-onnxruntime\t2.0.7+2\tinstall ok installed"
+  ]
+}

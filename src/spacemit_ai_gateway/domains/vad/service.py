@@ -69,6 +69,7 @@ class VadService:
         }
         self._engine_pending_restart = False
         self._load_lock = asyncio.Lock()
+        self._load_failed = False
         self.downloads = DownloadTracker(
             "vad", self._model_assets, lambda: list(self._allowed_backends), download_config
         )
@@ -94,10 +95,14 @@ class VadService:
     async def _ensure_backend(self, model: Optional[str] = None) -> VadBackend:
         name = self._model_id(model)
         try:
-            return await self._load_backend(name)
+            backend = await self._load_backend(name)
         except Exception as exc:
+            if not isinstance(exc, ModelUnknown):
+                self._load_failed = True
             mark_fault(exc, self.domain, name)  # 下载 / 加载失败归到这个模型
             raise
+        self._load_failed = False
+        return backend
 
     async def _load_backend(self, name: str) -> VadBackend:
         async with self._load_lock:
@@ -212,7 +217,11 @@ class VadService:
 
     async def healthz(self) -> dict:
         backend = self._backends.get(self._default)
-        state = backend.state if backend else BackendReadyState.IDLE
+        # 加载失败时实例可能尚未注册，不能因此误报正常 lazy idle。
+        state = (
+            BackendReadyState.FAILED if self._load_failed
+            else backend.state if backend else BackendReadyState.IDLE
+        )
         return HealthResponse(
             ready=state.is_serving,
             state=state.value,

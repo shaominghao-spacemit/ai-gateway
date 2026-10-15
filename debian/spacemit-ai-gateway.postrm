@@ -1,26 +1,27 @@
 #!/bin/sh
 set -e
-
-DROPIN_DIRS="/etc/systemd/system/spacemit-ai-gateway.service.d /etc/systemd/system/spacemit-ai-gateway-frontend.service.d"
-
 case "$1" in
-    purge)
-        rm -rf /opt/spacemit-ai-gateway
-        rm -rf $DROPIN_DIRS
+    remove|purge)
+        # remove 时包内 helper 已被 dpkg 删除；postrm 自包含，只清理带包标记的运行环境。
+        /usr/bin/python3 - <<'PY'
+import os
+from pathlib import Path
+import re
+import shutil
+app = Path('/opt/spacemit-ai-gateway')
+link = app / 'venv'
+if link.is_symlink() and re.fullmatch(r'runtime-[a-f0-9]{20}', os.readlink(link)):
+    link.unlink()
+for path in app.glob('runtime-*'):
+    if path.is_dir() and not path.is_symlink() and (path / '.gateway-runtime').is_file():
+        shutil.rmtree(path)
+PY
+        if [ "$1" = purge ]; then
+            rm -f /etc/spacemit-ai-gateway/credentials.env /etc/spacemit-ai-gateway/.legacy-migrated
+        fi
         ;;
-    remove)
-        rm -rf /opt/spacemit-ai-gateway/venv
-        rmdir /opt/spacemit-ai-gateway 2>/dev/null || true
-        rm -rf $DROPIN_DIRS
-        ;;
-    upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
-        ;;
-    *)
-        echo "postrm called with unknown argument \`$1'" >&2
-        exit 1
-        ;;
+    upgrade|failed-upgrade|abort-install|abort-upgrade|disappear) ;;
+    *) echo "Unexpected postrm argument: $1" >&2; exit 1 ;;
 esac
-
 #DEBHELPER#
-
 exit 0

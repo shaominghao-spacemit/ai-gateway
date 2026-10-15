@@ -4,9 +4,14 @@ After=network.target
 
 [Service]
 Type=simple
-User=root
+User=spacemit-ai-gateway
+Group=spacemit-ai-gateway
+Environment=HOME=/var/lib/spacemit-ai-gateway
 WorkingDirectory=/opt/spacemit-ai-gateway/frontend
-ExecStart=/usr/bin/python3 /opt/spacemit-ai-gateway/frontend/serve.py 8326 --bind ::
+ExecStart=/usr/bin/python3 /opt/spacemit-ai-gateway/frontend/serve.py 8326 --bind 127.0.0.1
+UMask=0027
+NoNewPrivileges=true
+ProtectSystem=full
 Restart=on-failure
 RestartSec=5
 
