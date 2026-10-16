@@ -470,7 +470,8 @@ def test_switch_to_remote_model(client):
     client.post("/v1/llm/models/register", json={
         "model": model,
         "source_type": "remote",
-        "api_base_url": "https://api.openai.com/v1",
+        # refused connection: later alias tests must not depend on reaching a public endpoint
+        "api_base_url": "http://127.0.0.1:1/v1",
         "api_key": "sk-test",
     })
     r = client.post("/v1/llm/models/switch", json={"model": model})
