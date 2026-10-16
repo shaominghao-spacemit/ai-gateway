@@ -1,0 +1,41 @@
+{
+  "artifact_id": "gateway-4b6a3960defc",
+  "attempt_id": "att-d64d2d5406e243888a321237894ef4b1",
+  "backup": "/home/bianbu/bibit-build/evidence/att-d64d2d5406e243888a321237894ef4b1/gateway-backup-dmes_9zr",
+  "checks": [
+    "original-listener-auth-contract-snapshotted",
+    "preflight-backup-rollback-deb",
+    "postinst-configure-reentry",
+    "original-listener-auth-contract-preserved",
+    "nonroot-eight-domain-health",
+    "r2-program-readonly-data-sqlite-writable",
+    "real-vad-load-inference",
+    "administrator-auth-config-environment-dropin-data",
+    "r6-failed-model-degrades-health",
+    "real-vad-load-inference",
+    "r6-real-model-reload-health-recovered",
+    "real-vad-load-inference",
+    "health-failure-kill-auto-recovery",
+    "upgrade-preserves-administrator-state",
+    "remove-preserves-administrator-state",
+    "real-vad-load-inference",
+    "reinstall-purge-preserves-dropin-and-data",
+    "original-package-files-data-services-restored",
+    "protected-package-inventory-unchanged"
+  ],
+  "log": "/home/bianbu/bibit-build/evidence/att-d64d2d5406e243888a321237894ef4b1/gateway-backup-dmes_9zr-summary.json",
+  "managed_asr": {
+    "contract": "managed-asr-v1",
+    "models": [],
+    "result": "not_run",
+    "t18": {
+      "reason": "both_models_not_verified",
+      "result": "not_passed"
+    }
+  },
+  "request_id": "req-c7013d2496584a08adbd05065b939d61",
+  "restored": true,
+  "result": "ok",
+  "sha256": "7c1c57ad51cad3edf7024c508d57696b4c1fc5e452e7160dbb43a00a2955ba60",
+  "safe_to_release": true
+}

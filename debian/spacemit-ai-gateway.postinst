@@ -12,6 +12,11 @@ user = pwd.getpwnam('spacemit-ai-gateway')
 if user.pw_uid == 0 or user.pw_dir != '/var/lib/spacemit-ai-gateway' or user.pw_gid != grp.getgrnam('spacemit-ai-gateway').gr_gid:
     raise SystemExit('Existing gateway account has an unexpected identity or home; fix the account before retrying')
 PYUSER
+        if ! getent group bibit-asr >/dev/null; then
+            addgroup --system bibit-asr
+        fi
+        adduser spacemit-ai-gateway bibit-asr >/dev/null
+        systemd-tmpfiles --create /usr/lib/tmpfiles.d/spacemit-ai-gateway-asr.conf
         for group in audio video render; do
             if getent group "$group" >/dev/null; then
                 adduser spacemit-ai-gateway "$group" >/dev/null
@@ -21,19 +26,6 @@ PYUSER
         install -d -m 0755 /etc/spacemit-ai-gateway
         /usr/bin/python3 /usr/lib/spacemit-ai-gateway/runtime.py install
         /opt/spacemit-ai-gateway/venv/bin/python /usr/lib/spacemit-ai-gateway/runtime.py migrate
-        if [ ! -e /etc/spacemit-ai-gateway/credentials.env ]; then
-            umask 077
-            /usr/bin/python3 - <<'PY'
-import os
-from pathlib import Path
-import secrets
-path = Path('/etc/spacemit-ai-gateway/credentials.env')
-fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-with os.fdopen(fd, 'w') as stream:
-    stream.write('SPACEMIT_AI_GATEWAY_AUTH__ENABLED=true\n')
-    stream.write("SPACEMIT_AI_GATEWAY_AUTH__API_KEYS='[\"" + secrets.token_urlsafe(32) + "\"]'\n")
-PY
-        fi
         ;;
     abort-upgrade|abort-remove|abort-deconfigure) ;;
     *) echo "Unexpected postinst argument: $1" >&2; exit 1 ;;

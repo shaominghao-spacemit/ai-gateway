@@ -9,8 +9,9 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import List
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
 from ...app.settings import get_settings
 from ...common.audio_codec import AudioDecodeError, normalize_audio_for_inference
@@ -28,6 +29,11 @@ from ...common.streams import enforce_max_upload_size
 from ...gateway.auth import verify_api_key
 from ...gateway.dependencies import get_asr_service
 from .schemas import (
+    ManagedAcquireRequest,
+    ManagedReleaseRequest,
+    ManagedStatus,
+    ManagedAcquireResponse,
+    ManagedModel,
     AsrAudioPatch,
     AsrAudioResponse,
     AsrEnginePatch,
@@ -291,3 +297,50 @@ async def delete_lexicon(
     if not deleted:
         raise HTTPException(status_code=404, detail="lexicon not found")
     return {"ok": True}
+
+
+# 托管接口均显式鉴权，含只读状态；沿用现有密钥/IP 白名单逻辑。
+@router.get("/managed/status", response_model=ManagedStatus, dependencies=[Depends(verify_api_key)])
+async def managed_status(model: ManagedModel, language: str,
+                         service: AsrService = Depends(get_asr_service)):
+    return await service.managed.status(model, language)
+
+
+@router.post("/managed/acquire", response_model=ManagedAcquireResponse, dependencies=[Depends(verify_api_key)])
+async def managed_acquire(body: ManagedAcquireRequest, request: Request,
+                          service: AsrService = Depends(get_asr_service)):
+    task = asyncio.create_task(service.managed.acquire(str(body.owner), body.model, body.language))
+    try:
+        while not task.done():
+            if await request.is_disconnected():
+                raise asyncio.CancelledError
+            await asyncio.wait({task}, timeout=0.05)
+        return await task
+    finally:
+        if not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+
+@router.post("/managed/release", dependencies=[Depends(verify_api_key)])
+async def managed_release(body: ManagedReleaseRequest,
+                          service: AsrService = Depends(get_asr_service)):
+    return await service.managed.release(str(body.owner), body.token)
+
+
+@router.post("/managed/recognize", dependencies=[Depends(verify_api_key), Depends(_max_upload)])
+async def managed_recognize(file: UploadFile = File(...), owner: UUID = Form(...),
+                            token: str = Form(..., min_length=1), language: str = Form(...),
+                            service: AsrService = Depends(get_asr_service)):
+    audio = await file.read()
+    if len(audio) > get_settings().limits.max_upload_bytes:
+        from ...common.errors import RequestTooLargeError
+        raise RequestTooLargeError("audio upload too large")
+    try:
+        normalized = await asyncio.to_thread(normalize_audio_for_inference, audio,
+                                             target_sample_rate=16000, filename=file.filename,
+                                             content_type=file.content_type)
+    except AudioDecodeError as exc:
+        raise AsrInvalidAudio(str(exc), details=exc.details) from exc
+    text = await service.managed.recognize(str(owner), token, language, normalized.pcm)
+    return {"text": text}

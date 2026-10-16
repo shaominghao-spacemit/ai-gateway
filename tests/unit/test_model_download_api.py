@@ -472,7 +472,10 @@ async def test_old_database_is_migrated(tmp_path):
 def _asr_service(tmp_path, url):
     from spacemit_ai_gateway.domains.asr.service import AsrService
 
+    lock = tmp_path / "engine.lock"
+    lock.touch(mode=0o660)
     cfg = AsrConfig(
+        managed={"lock_path": str(lock)},
         model_dir=str(tmp_path / "asr" / "sensevoice"),
         models=[{"id": "sensevoice", "url": url, "archive_subdir": "sensevoice"}],
         backends=["sensevoice", "qwen3-asr"],

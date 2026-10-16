@@ -41,6 +41,26 @@ class AsrQwen3Config(BaseModel):
     timeout: int = 60
 
 
+class ManagedQwen3Config(BaseModel):
+    model_dir: str = "/opt/bibit/models/asr/qwen3-asr-0.6B-dynq-q40"
+    server_bin: str = "llama-server"
+    port: int = Field(default=8063, ge=1024, le=65535)
+    threads: int = Field(default=2, ge=1, le=2)
+    batch_threads: int = Field(default=2, ge=1, le=2)
+    ctx_size: int = Field(default=4096, ge=1024, le=65536)
+    ep_affinity: str = "8;9"
+    max_tokens: int = Field(default=100, ge=16, le=1024)
+
+
+class AsrManagedConfig(BaseModel):
+    enabled: bool = False
+    sensevoice_dir: Optional[str] = None  # 未配置时沿用 asr.model_dir
+    lock_path: str = "/run/lock/bibit-asr/engine.lock"
+    startup_timeout: float = Field(default=60, gt=0)
+    shutdown_timeout: float = Field(default=10, gt=0)
+    qwen3: ManagedQwen3Config = Field(default_factory=ManagedQwen3Config)
+
+
 class AsrStreamConfig(BaseModel):
     session_ttl_s: int = 300
     event_queue_size: int = 64
@@ -69,6 +89,7 @@ class AsrConfig(BaseModel):
     enable_emotion: bool = False
     warmup_audio_ms: int = 1000
     qwen3: AsrQwen3Config = Field(default_factory=AsrQwen3Config)
+    managed: AsrManagedConfig = Field(default_factory=AsrManagedConfig)
     stream: AsrStreamConfig = Field(default_factory=AsrStreamConfig)
 
 

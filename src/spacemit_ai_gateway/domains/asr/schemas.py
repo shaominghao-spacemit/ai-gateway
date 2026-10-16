@@ -1,6 +1,7 @@
 """ASR 请求/响应模型。"""
 
-from typing import List, Optional
+from typing import List, Optional, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -186,3 +187,34 @@ class AsrLexiconItem(BaseModel):
 
 class AsrLexiconListResponse(BaseModel):
     lexicons: List[AsrLexiconItem]
+
+
+# 托管协议与旧 ASR 参数分开，避免改变旧字段含义。
+ManagedModel = Literal["sensevoice", "qwen3_asr_0.6b"]
+
+
+class ManagedAcquireRequest(BaseModel):
+    owner: UUID
+    model: ManagedModel
+    language: str
+
+
+class ManagedReleaseRequest(BaseModel):
+    owner: UUID
+    token: str = Field(min_length=1)
+
+
+class ManagedStatus(BaseModel):
+    protocol_version: Literal[1] = 1
+    instance_id: str
+    model: ManagedModel
+    languages: list[str]
+    assets_ready: bool
+    ready: bool
+    owner: str | None
+    resource_state: Literal["free", "owned", "blocked"]
+    reason: str
+
+
+class ManagedAcquireResponse(ManagedStatus):
+    token: str

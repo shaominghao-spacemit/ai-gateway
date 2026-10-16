@@ -240,11 +240,9 @@ def vad_service(fake_vad_backend) -> VadService:
     return VadService({"fake": fake_vad_backend}, "fake")
 
 
-@pytest_asyncio.fixture
-async def client(tmp_path, monkeypatch) -> AsyncGenerator[httpx.AsyncClient, None]:
-    """直连 app。ASGITransport 不会自动跑 lifespan，所以这里显式进入
-    `app.router.lifespan_context` 来 trigger startup / shutdown，让
-    `app.state.*_service` 被装配。"""
+@pytest.fixture
+def host_gateway_config(tmp_path, monkeypatch):
+    """宿主 lifespan 测试使用独立存储和真实 flock 文件，不依赖系统安装。"""
     from spacemit_ai_gateway.app.settings import get_settings, load_yaml_config
 
     config = copy.deepcopy(load_yaml_config())
@@ -252,11 +250,24 @@ async def client(tmp_path, monkeypatch) -> AsyncGenerator[httpx.AsyncClient, Non
         storage = config[domain]["storage"]
         storage["db_path"] = str(tmp_path / domain / "db.sqlite")
 
+    lock = tmp_path / "engine.lock"
+    lock.touch(mode=0o660)
+    config["asr"].setdefault("managed", {})["lock_path"] = str(lock)
+
     config_path = tmp_path / "base.yaml"
     config_path.write_text(yaml.safe_dump(config, allow_unicode=True), encoding="utf-8")
     monkeypatch.setenv("SPACEMIT_AI_GATEWAY_CONFIG", str(config_path))
     get_settings.cache_clear()
 
+    try:
+        yield
+    finally:
+        get_settings.cache_clear()
+
+
+@pytest_asyncio.fixture
+async def client(host_gateway_config) -> AsyncGenerator[httpx.AsyncClient, None]:
+    """显式进入 lifespan，让 app.state 中的真实服务得到装配。"""
     from spacemit_ai_gateway.app.main import app as real_app
 
     try:
@@ -265,4 +276,8 @@ async def client(tmp_path, monkeypatch) -> AsyncGenerator[httpx.AsyncClient, Non
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
                 yield c
     finally:
-        get_settings.cache_clear()
+        service = real_app.state.asr_service
+        if service._legacy_fd is not None:
+            import os
+            os.close(service._legacy_fd)
+            service._legacy_fd = None

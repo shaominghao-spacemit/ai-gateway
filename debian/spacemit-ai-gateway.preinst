@@ -7,7 +7,186 @@ case "$1" in
         backup=/etc/spacemit-ai-gateway/legacy-base.yaml
         if [ -f "$legacy" ] && [ ! -e "$backup" ]; then
             install -d -m 0755 /etc/spacemit-ai-gateway
-            (umask 077; cp -p "$legacy" "$backup")
+            install -m 0600 "$legacy" "$backup"
+        fi
+        if [ -f "$legacy" ] || [ -f "$backup" ]; then
+            # 新 unit unpack 前记录旧进程实际 HOME/环境，不能用 sudo 调用者猜测。
+            /usr/bin/python3 - <<'PYCONTEXT'
+import json
+import os
+from pathlib import Path
+import pwd
+import shlex
+import subprocess
+import tempfile
+
+
+
+def read_environment(path):
+    values = {}
+    for line in path.read_text().splitlines():
+        if line.lstrip().startswith(('#', ';')) or '=' not in line:
+            continue
+        key, value = line.split('=', 1)
+        values[key.strip()] = ' '.join(shlex.split(value, comments=False))
+    return values
+
+
+def offline_context(root, name='spacemit-ai-gateway.service', optional=False):
+    # 仅解析旧身份/环境所需的常见 unit 语法；不执行 shell、不猜调用者 HOME。
+    directories = [root / prefix for prefix in (
+        'etc/systemd/system', 'run/systemd/system', 'usr/local/lib/systemd/system',
+        'usr/lib/systemd/system', 'lib/systemd/system')]
+    unit = next((directory / name for directory in directories
+                 if (directory / name).exists() or (directory / name).is_symlink()), None)
+    if optional and (unit is None or unit.resolve() == Path('/dev/null')):
+        return {}, {}
+    if unit is None or not unit.is_file() or unit.resolve() == Path('/dev/null'):
+        raise RuntimeError('Cannot inspect legacy gateway identity: no usable offline unit')
+    dropins = {}
+    # 同名文件：具体服务优先于前缀/全局，/etc 优先于 vendor；最后按文件名合并。
+    prefixes = [name[:index + 1] + '.service.d' for index, char in enumerate(name) if char == '-']
+    for scope in ('service.d', *prefixes, name + '.d'):
+        for directory in reversed(directories):
+            dropins.update({path.name: path for path in (directory / scope).glob('*.conf')})
+    properties = {'MainPID': '0'}
+    environment = {}
+    files = []
+    for path in [unit, *(dropins[key] for key in sorted(dropins))]:
+        if path.is_symlink() and path.resolve() == Path('/dev/null'):
+            continue
+        section = ''
+        for line in path.read_text().replace('\\\n', ' ').splitlines():
+            line = line.strip()
+            if not line or line.startswith(('#', ';')):
+                continue
+            if line.startswith('[') and line.endswith(']'):
+                section = line
+                continue
+            if section != '[Service]' or '=' not in line:
+                continue
+            key, value = (part.strip() for part in line.split('=', 1))
+            if key == 'ExecStart':
+                if value and properties.get(key):
+                    raise RuntimeError('Cannot migrate multiple legacy service start commands')
+                properties[key] = value
+            elif key in ('User', 'WorkingDirectory', 'Environment', 'EnvironmentFile'):
+                if '%' in value or '\\' in value:
+                    raise RuntimeError('Cannot resolve offline legacy unit specifiers or escapes')
+                if key == 'Environment':
+                    if not value:
+                        environment.clear()
+                    for entry in shlex.split(value, comments=False):
+                        variable, separator, content = entry.partition('=')
+                        if not separator:
+                            raise RuntimeError('Invalid offline legacy unit environment')
+                        environment[variable] = content
+                elif key == 'EnvironmentFile':
+                    if not value:
+                        files.clear()
+                    else:
+                        files.extend(shlex.split(value, comments=False))
+                else:
+                    values = shlex.split(value, comments=False)
+                    properties[key] = values[0] if len(values) == 1 else ''
+                    if len(values) > 1:
+                        raise RuntimeError('Ambiguous offline legacy unit identity or directory')
+            elif ((key == 'DynamicUser' and value.lower() not in ('', 'no', 'false', '0')) or
+                  (key in ('RootDirectory', 'RootImage', 'PAMName', 'PassEnvironment', 'UnsetEnvironment') and value)):
+                raise RuntimeError('Cannot resolve offline legacy unit identity/environment directive: ' + key)
+    for value in files:
+        optional = value.startswith('-')
+        name = value[1:] if optional else value
+        if not Path(name).is_absolute() or any(char in name for char in '*?['):
+            raise RuntimeError('Cannot resolve offline legacy EnvironmentFile: ' + name)
+        path = root / name.lstrip('/')
+        if path.exists() or not optional:
+            environment.update(read_environment(path))
+    return properties, environment
+
+
+def snapshot(root=Path("/"), proc=Path("/proc")):
+    etc = root / 'etc/spacemit-ai-gateway'
+    destination = etc / 'legacy-context.json'
+    if destination.exists():
+        return
+    try:
+        in_chroot = not os.path.samefile(root, proc / '1/root')
+    except OSError:
+        in_chroot = False
+    result = None
+    if not in_chroot:
+        try:
+            result = subprocess.run(
+                ['systemctl', 'show', 'spacemit-ai-gateway.service',
+                 '--property=MainPID,User,Environment,WorkingDirectory'],
+                capture_output=True, text=True, check=False)
+        except FileNotFoundError:
+            pass
+    offline = result is None or result.returncode != 0 or not result.stdout.strip()
+    if offline:
+        # 正常运行的 systemd 查询失败仍不能用静态配置冒充当前进程环境。
+        if not in_chroot and (root / 'run/systemd/system').exists():
+            raise RuntimeError('Cannot inspect legacy gateway identity before upgrade')
+        properties, environment = offline_context(root)
+    else:
+        properties = dict(line.split('=', 1) for line in result.stdout.splitlines() if '=' in line)
+        environment = dict(value.split('=', 1) for value in shlex.split(properties.get('Environment', '')) if '=' in value)
+    pid = properties.get('MainPID', '0')
+    if pid != '0':
+        # 运行中的进程才是有效配置的最终证据，包含所有 EnvironmentFile 覆盖。
+        raw = (proc / pid / 'environ').read_bytes()
+        environment.update(dict(value.split('=', 1) for value in raw.decode().split('\0') if '=' in value))
+    elif not offline:
+        # 旧 maintainer prerm 可能已停止服务；EnvironmentFile 不反映在 show Environment。
+        for name in ('credentials.env', 'environment'):
+            path = etc / name
+            if path.is_file():
+                environment.update(read_environment(path))
+    user = properties.get('User') or 'root'
+    home = environment.get('HOME') or pwd.getpwnam(user).pw_dir
+    config = environment.get('SPACEMIT_AI_GATEWAY_CONFIG')
+    if config:
+        # 管理员自选 YAML 也在旧 HOME 和 WorkingDirectory 下解析，源文件留存。
+        config = config.replace('~/', home.rstrip('/') + '/', 1) if config.startswith('~/') else config
+        config_path = Path(config)
+        if not config_path.is_absolute():
+            config_path = Path(properties.get('WorkingDirectory') or '/opt/spacemit-ai-gateway') / config_path
+        effective = etc / 'legacy-effective-base.yaml'
+        if not effective.exists():
+            contents = (root / str(config_path).lstrip('/')).read_bytes()
+            fd, pending = tempfile.mkstemp(prefix='.legacy-config-', dir=etc)
+            try:
+                with os.fdopen(fd, 'wb') as stream:
+                    stream.write(contents)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.replace(pending, effective)
+            finally:
+                if os.path.exists(pending):
+                    os.unlink(pending)
+    context = {'user': user, 'home': home,
+               'working_directory': properties.get('WorkingDirectory') or '/opt/spacemit-ai-gateway',
+               'environment': {key: value for key, value in environment.items()
+                               if key.startswith('SPACEMIT_AI_GATEWAY_') or key == 'XDG_CACHE_HOME'}}
+    frontend, _ = offline_context(root, 'spacemit-ai-gateway-frontend.service', optional=True)
+    if frontend.get('ExecStart'):
+        context['frontend_exec_start'] = frontend['ExecStart']
+    fd, temporary = tempfile.mkstemp(prefix='.legacy-context-', dir=etc)
+    try:
+        with os.fdopen(fd, 'w') as stream:
+            json.dump(context, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, destination)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+if __name__ == '__main__':
+    snapshot()
+PYCONTEXT
         fi
         ;;
     abort-upgrade) ;;

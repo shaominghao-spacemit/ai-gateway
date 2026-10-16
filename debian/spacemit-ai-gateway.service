@@ -6,6 +6,7 @@ After=network.target
 Type=simple
 User=spacemit-ai-gateway
 Group=spacemit-ai-gateway
+SupplementaryGroups=bibit-asr
 Environment=HOME=/var/lib/spacemit-ai-gateway
 Environment=PYTHONNOUSERSITE=1
 Environment=PATH=/opt/spacemit-ai-gateway/venv/bin:/usr/local/bin:/usr/bin:/bin

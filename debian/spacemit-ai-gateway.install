@@ -9,3 +9,4 @@ build/runtime             opt/spacemit-ai-gateway/
 debian/runtime.py         usr/lib/spacemit-ai-gateway/
 schema/*.json             opt/spacemit-ai-gateway/schema/
 debian/tests/test-device-lifecycle.py usr/lib/spacemit-ai-gateway/
+debian/spacemit-ai-gateway-asr.conf usr/lib/tmpfiles.d/

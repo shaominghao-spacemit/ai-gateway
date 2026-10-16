@@ -67,9 +67,8 @@ def ensure_archive_model(
         return
 
     target_dir.mkdir(parents=True, exist_ok=True)
-    target_dir.parent.mkdir(parents=True, exist_ok=True)
-
-    with _file_lock(target_dir.parent / f".{target_dir.name}.lock"):
+    # 临时文件和锁留在模型子树内，避免要求管理员模型父目录可写。
+    with _file_lock(target_dir / f".{target_dir.name}.lock"):
         missing = _missing_paths(target_dir, required_paths)
         if not missing:
             return
@@ -82,7 +81,7 @@ def ensure_archive_model(
         )
 
         with tempfile.TemporaryDirectory(
-            prefix=".model-download-", dir=str(target_dir.parent)
+            prefix=".model-download-", dir=str(target_dir)
         ) as tmp_name:
             tmp_dir = Path(tmp_name)
             archive_path = tmp_dir / archive_name

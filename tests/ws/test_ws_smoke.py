@@ -17,10 +17,17 @@ from starlette.websockets import WebSocketDisconnect
 
 
 @pytest.fixture
-def tclient():
+def tclient(host_gateway_config):
     from spacemit_ai_gateway.app.main import app as real_app
-    with TestClient(real_app) as c:
-        yield c
+    try:
+        with TestClient(real_app) as c:
+            yield c
+    finally:
+        service = real_app.state.asr_service
+        if service._legacy_fd is not None:
+            import os
+            os.close(service._legacy_fd)
+            service._legacy_fd = None
 
 
 def test_ws_asr_missing_session_errors(tclient):
