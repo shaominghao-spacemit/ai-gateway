@@ -1,0 +1,18 @@
+[
+  {
+    "model": "sensevoice",
+    "language": "auto",
+    "audio": "/home/bianbu/bibit-asr-acceptance/wo-zai.wav",
+    "expect_text": "我在"
+  },
+  {
+    "model": "qwen3_asr_0.6b",
+    "language": "zh,en",
+    "switch_languages": [
+      "zh",
+      "en"
+    ],
+    "audio": "/home/bianbu/bibit-asr-acceptance/wo-zai.wav",
+    "expect_text": "我在"
+  }
+]
