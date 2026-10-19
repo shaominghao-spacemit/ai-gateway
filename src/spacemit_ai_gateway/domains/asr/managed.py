@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import atexit
 import errno
 import fcntl
 import hmac
@@ -20,8 +21,72 @@ from .managed_assets import check_assets, language_support, languages
 from .managed_backend import ManagedBackend
 
 _INSTANCE_IDS: dict[int, str] = {}
-_PARTICIPANTS: dict[tuple[int, str], int] = {}
+_PARTICIPANTS: dict[tuple[int, str], tuple[int, str]] = {}
 _PARTICIPANT_LOCK = threading.Lock()
+
+
+def _same_inode(path: str, fd: int) -> bool:
+    try:
+        current = os.lstat(path)
+        opened = os.fstat(fd)
+    except OSError:
+        return False
+    return (current.st_dev, current.st_ino) == (opened.st_dev, opened.st_ino)
+
+
+def _drop_participant(path: str, fd: int) -> None:
+    if _same_inode(path, fd):
+        os.unlink(path)
+
+
+def _cleanup_participants() -> None:
+    with _PARTICIPANT_LOCK:
+        for fd, path in _PARTICIPANTS.values():
+            try:
+                _drop_participant(path, fd)
+            except OSError:
+                pass
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        _PARTICIPANTS.clear()
+
+
+def _cleanup_stale_participants(directory: str) -> None:
+    try:
+        entries = os.scandir(directory)
+    except OSError:
+        return
+    with entries:
+        for entry in entries:
+            name = entry.name
+            if (not name.startswith("participant-") or not name.endswith(".lock")
+                    or not name[12:-5].isdigit()):
+                continue
+            try:
+                fd = os.open(
+                    entry.path,
+                    os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK,
+                )
+            except OSError:
+                continue
+            try:
+                if not stat.S_ISREG(os.fstat(fd).st_mode):
+                    continue
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except OSError:
+                    continue
+                if _same_inode(entry.path, fd):
+                    os.unlink(entry.path)
+            except OSError:
+                pass
+            finally:
+                os.close(fd)
+
+
+atexit.register(_cleanup_participants)
 
 
 def register_participant(lock_path: str) -> int:
@@ -29,7 +94,8 @@ def register_participant(lock_path: str) -> int:
         directory = str(Path(lock_path).parent.resolve())
         key = (os.getpid(), directory)
         if key in _PARTICIPANTS:
-            return _PARTICIPANTS[key]
+            return _PARTICIPANTS[key][0]
+        _cleanup_stale_participants(directory)
         path = Path(directory) / f"participant-{os.getpid()}.lock"
         fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_CLOEXEC | os.O_NOFOLLOW, 0o644)
         try:
@@ -40,7 +106,8 @@ def register_participant(lock_path: str) -> int:
         except BaseException:
             os.close(fd)
             raise
-        _PARTICIPANTS[key] = fd  # 不随 service.shutdown 释放；进程退出时 kernel 回收。
+        # service.shutdown 后进程若继续服务仍保持 flock；进程退出时删除标记。
+        _PARTICIPANTS[key] = (fd, str(path))
         return fd
 
 

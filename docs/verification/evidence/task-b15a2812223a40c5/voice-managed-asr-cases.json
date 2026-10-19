@@ -2,7 +2,7 @@
   {
     "model": "sensevoice",
     "language": "auto",
-    "audio": "/home/bianbu/bibit-asr-acceptance/wo-zai.wav",
+    "audio": "/usr/share/bibit/sounds/wo-zai.wav",
     "expect_text": "我在"
   },
   {
@@ -12,7 +12,7 @@
       "zh",
       "en"
     ],
-    "audio": "/home/bianbu/bibit-asr-acceptance/wo-zai.wav",
+    "audio": "/usr/share/bibit/sounds/wo-zai.wav",
     "expect_text": "我在"
   }
 ]

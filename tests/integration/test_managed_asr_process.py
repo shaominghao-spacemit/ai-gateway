@@ -149,6 +149,23 @@ os._exit(0)
         pytest.fail('lock remained after last holder exited')
 
 
+def test_participant_marker_is_removed_and_stale_files_are_reaped(tmp_path):
+    lock = tmp_path / 'engine.lock'
+    lock.touch()
+    stale = tmp_path / 'participant-99999999.lock'
+    stale.touch()
+    source = '''import os, sys
+from spacemit_ai_gateway.domains.asr.managed import register_participant
+register_participant(sys.argv[1])
+print(os.path.join(os.path.dirname(sys.argv[1]), f"participant-{os.getpid()}.lock"))
+'''
+    result = subprocess.run([sys.executable, '-c', source, str(lock)],
+                            capture_output=True, text=True, timeout=5)
+    assert result.returncode == 0
+    assert not stale.exists()
+    assert not Path(result.stdout.strip()).exists()
+
+
 def test_foreign_engine_port_is_detected_never_killed():
     # 旧调用者占着引擎端口：检测按实际占用，不要求它配合 flock，也不能杀它。
     import socket

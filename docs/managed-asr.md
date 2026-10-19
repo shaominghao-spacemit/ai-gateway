@@ -117,22 +117,49 @@ Qwen 使用本方临时 SMT 配置，清理遗留 LD_LIBRARY_PATH/EP 环境，TC
 - Qwen：`config.json`（含 audio_model 对象）、`Qwen3-ASR-0.6B-text-q40.gguf`、
   `Qwen3-ASR-0.6B-encoder-frontend.dynq.onnx`、`Qwen3-ASR-0.6B-encoder-backend.dynq.onnx`。
 
-在安装了实际 SDK 的 Gateway venv 中执行以下离线命令。`--library` 应重复指定全部实际依赖的
-厂商 EP/ONNX/媒体运行库绝对路径；`--runtime-package` 可重复指定需要固定的 Python distribution。
-SenseVoice 自动记录 spacemit-asr 版本，Qwen 自动核验并记录可执行文件摘要。
-下例库路径为占位，必须替换成设备实有路径：
+在安装了本轮候选 Gateway 及实际 SDK 的 venv 中执行以下离线命令。`--library` 应重复指定
+全部实际依赖的厂商 EP/ONNX/媒体运行库绝对路径；`--runtime-package` 可重复指定需要固定的
+Python distribution。SenseVoice 自动记录 `spacemit-asr` 版本，Qwen 自动核验并记录
+`llama-server` 摘要。`--version` 是管理员提供的资产身份标签，不是 Gateway 包版本，
+也不会从模型文件推导；应使用可追溯的归档或发布标识，并在变更任一权重、编码器或运行库时更新。
+以下命令以 K3DEB1 实测资产为例，其他板卡必须按本机文件重新生成：
 
 ```sh
 /opt/spacemit-ai-gateway/venv/bin/python -m spacemit_ai_gateway.domains.asr.managed_assets \
+  --model sensevoice \
+  --model-dir /opt/bibit/models/asr/sensevoice \
+  --version sensevoice-archive-d2670fd0d6247c34b397ca4c48ee3d61 \
+  --runtime-package spacemit-asr \
+  --library /usr/lib/libonnxruntime.so.1.24.2+spacemit.a1 \
+  --library /usr/lib/libspacemit_ep.so.2.0.7 \
+  --library /usr/lib/libspert.so.0.6.2
+
+/opt/spacemit-ai-gateway/venv/bin/python -m spacemit_ai_gateway.domains.asr.managed_assets \
   --model qwen3_asr_0.6b \
   --model-dir /opt/bibit/models/asr/qwen3-asr-0.6B-dynq-q40 \
-  --version YOUR_VERIFIED_ASSET_VERSION --server-bin /usr/bin/llama-server \
-  --library /absolute/path/to/actual/runtime-library.so
+  --version qwen3-asr-0.6B-dynq-q40-archive-61dbc944077331670014cdfbe4de3a73 \
+  --server-bin /usr/bin/llama-server \
+  --library /usr/lib/libonnxruntime.so.1.24.2+spacemit.a1 \
+  --library /usr/lib/libspacemit_ep.so.2.0.7 \
+  --library /usr/lib/libspert.so.0.6.2
+
+/opt/spacemit-ai-gateway/venv/bin/python -m spacemit_ai_gateway.domains.asr.managed_assets \
+  --model sensevoice --model-dir /opt/bibit/models/asr/sensevoice --verify
 
 /opt/spacemit-ai-gateway/venv/bin/python -m spacemit_ai_gateway.domains.asr.managed_assets \
   --model qwen3_asr_0.6b \
   --model-dir /opt/bibit/models/asr/qwen3-asr-0.6B-dynq-q40 \
   --server-bin /usr/bin/llama-server --verify
+```
+
+K3DEB1 的实测运行库摘要如下；清单会直接记录这些路径与 SHA256：
+
+```text
+spacemit-asr=1.0.2
+libonnxruntime.so.1.24.2+spacemit.a1  5d132e2ae7c322d1d31664a55848048584acd4ae8956f42ac6427defe3ca4036
+libspacemit_ep.so.2.0.7              4f0c251df521e3d62cf4a04d63178fd69da9fe3821590e0129fe1a5b0da92509
+libspert.so.0.6.2                    0db8febc30aa49d6915c174a8f65b076dbbc7f61a4a3a6e18319eb0aa289b7fe
+llama-server                         3ac6b231e28b51ca4be23a15dee85dabf91cefa50573f50037f7ccbdda2cc695
 ```
 
 生成命令拒绝空文件、缺文件、无运行库、无版本及默认覆盖现有清单；显式 `--force` 才原子替换。
@@ -173,8 +200,8 @@ size、mtime_ns、ctime_ns 和 runtime distribution 版本缓存；每次 status
 ]
 ```
 
-新版平台入口为 `bibit-dev verify deploy <artifact_id> --managed-cases <板端绝对路径>
---managed-cases-sha256 <摘要> --wait`。托管请求使用独立 RPC 操作，旧 daemon 会明确拒绝，
+新版平台入口为 `bibit-dev verify deploy <artifact_id> --managed-cases <宿主机绝对路径>
+--managed-cases-sha256 <摘要> --wait`；平台校验后上传到验收板，并在板端再次核对摘要。托管请求使用独立 RPC 操作，旧 daemon 会明确拒绝，
 须按平台排空流程一同更新 CLI/daemon/worker；不能直接把新 CLI 连到旧 daemon 当作已升级。
 
 模型/运行库/清单须在设备预先就绪，管理员配置指向它们；验收只临时 opt-in，结束恢复原配置。
