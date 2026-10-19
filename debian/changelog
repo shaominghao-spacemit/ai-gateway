@@ -1,3 +1,9 @@
+spacemit-ai-gateway (0.0.20) resolute-customization; urgency=medium
+
+  * Add managed ASR lifecycle and harden installation, upgrades and recovery.
+
+ -- muggle <promuggle@gmail.com>  Sun, 19 Oct 2026 16:05:00 +0800
+
 spacemit-ai-gateway (0.0.1) resolute-customization; urgency=medium
 
   * Initial for main

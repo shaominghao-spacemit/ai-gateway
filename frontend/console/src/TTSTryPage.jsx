@@ -138,7 +138,7 @@ function TTSTryPage({ model, onBack }) {
         + '?session_id=' + encodeURIComponent(sess.session_id)
         + '&voice_id=' + encodeURIComponent(voiceId || '')
         + '&response_format=pcm';
-      const ws = new WebSocket(wsUrl);
+      const ws = new WebSocket(wsUrl, window.gatewayAuth.wsProtocols());
       ws.binaryType = 'arraybuffer';
       wsRef.current = ws;
 

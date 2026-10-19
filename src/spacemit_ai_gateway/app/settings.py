@@ -12,13 +12,13 @@ from typing import Any, Optional
 
 import yaml
 from pydantic import BaseModel, Field
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 
 class AppConfig(BaseModel):
     name: str = "SpacemiT AI Gateway"
     version: str = "0.2.0"
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"
     port: int = 18790
     debug: bool = False
 
@@ -39,6 +39,26 @@ class AsrQwen3Config(BaseModel):
     endpoint: str = "http://127.0.0.1:8063/v1/chat/completions"
     model: str = "qwen3-asr"
     timeout: int = 60
+
+
+class ManagedQwen3Config(BaseModel):
+    model_dir: str = "/opt/bibit/models/asr/qwen3-asr-0.6B-dynq-q40"
+    server_bin: str = "llama-server"
+    port: int = Field(default=8063, ge=1024, le=65535)
+    threads: int = Field(default=2, ge=1, le=2)
+    batch_threads: int = Field(default=2, ge=1, le=2)
+    ctx_size: int = Field(default=4096, ge=1024, le=65536)
+    ep_affinity: str = "8;9"
+    max_tokens: int = Field(default=100, ge=16, le=1024)
+
+
+class AsrManagedConfig(BaseModel):
+    enabled: bool = False
+    sensevoice_dir: Optional[str] = None  # 未配置时沿用 asr.model_dir
+    lock_path: str = "/run/lock/bibit-asr/engine.lock"
+    startup_timeout: float = Field(default=60, gt=0)
+    shutdown_timeout: float = Field(default=10, gt=0)
+    qwen3: ManagedQwen3Config = Field(default_factory=ManagedQwen3Config)
 
 
 class AsrStreamConfig(BaseModel):
@@ -69,6 +89,7 @@ class AsrConfig(BaseModel):
     enable_emotion: bool = False
     warmup_audio_ms: int = 1000
     qwen3: AsrQwen3Config = Field(default_factory=AsrQwen3Config)
+    managed: AsrManagedConfig = Field(default_factory=AsrManagedConfig)
     stream: AsrStreamConfig = Field(default_factory=AsrStreamConfig)
 
 
@@ -248,31 +269,48 @@ class Settings(BaseSettings):
     download: DownloadConfig = Field(default_factory=DownloadConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
-    class Config:
-        env_prefix = "SPACEMIT_AI_GATEWAY_"
-        env_nested_delimiter = "__"
+    model_config = SettingsConfigDict(
+        env_prefix="SPACEMIT_AI_GATEWAY_", env_nested_delimiter="__"
+    )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        # Pydantic 会递归合并来源，环境覆盖单个叶子时保留 YAML 的其它字段。
+        return env_settings, init_settings, dotenv_settings, file_secret_settings
+
+
+def _parse_yaml_config(text: str, source: str) -> dict:
+    try:
+        config = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise ValueError(f"Invalid gateway YAML configuration: {source}") from exc
+    if not isinstance(config, dict):
+        raise ValueError(f"Gateway configuration must be a YAML mapping: {source}")
+    return config
 
 
 def _load_yaml_file(config_path: Path) -> dict:
-    with open(config_path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+    return _parse_yaml_config(config_path.read_text(encoding="utf-8"), str(config_path))
 
 
 def load_yaml_config(config_path: Optional[str] = None) -> dict:
     if config_path is None:
         config_path = os.getenv("SPACEMIT_AI_GATEWAY_CONFIG")
 
-    if config_path:
-        explicit_path = Path(config_path).expanduser()
-        if explicit_path.exists():
-            return _load_yaml_file(explicit_path)
-        return {}
+    if config_path is not None:
+        if not config_path.strip():
+            raise ValueError("SPACEMIT_AI_GATEWAY_CONFIG must name a YAML file")
+        return _load_yaml_file(Path(config_path).expanduser())
 
     package_config = resources.files("spacemit_ai_gateway").joinpath("configs", "base.yaml")
-    if package_config.is_file():
-        return yaml.safe_load(package_config.read_text(encoding="utf-8")) or {}
-
-    return {}
+    return _parse_yaml_config(package_config.read_text(encoding="utf-8"), str(package_config))
 
 
 @lru_cache

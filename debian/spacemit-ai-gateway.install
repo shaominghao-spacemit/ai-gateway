@@ -3,6 +3,10 @@ frontend/landing.css      opt/spacemit-ai-gateway/frontend/
 frontend/landing-hero.js  opt/spacemit-ai-gateway/frontend/
 frontend/serve.py         opt/spacemit-ai-gateway/frontend/
 frontend/console          opt/spacemit-ai-gateway/frontend/
-requirements-runtime.txt  opt/spacemit-ai-gateway/
-configs                   opt/spacemit-ai-gateway/
+configs/base.yaml         etc/spacemit-ai-gateway/
+configs/base.yaml         usr/share/spacemit-ai-gateway/
+build/runtime             opt/spacemit-ai-gateway/
+debian/runtime.py         usr/lib/spacemit-ai-gateway/
 schema/*.json             opt/spacemit-ai-gateway/schema/
+debian/tests/test-device-lifecycle.py usr/lib/spacemit-ai-gateway/
+debian/spacemit-ai-gateway-asr.conf usr/lib/tmpfiles.d/

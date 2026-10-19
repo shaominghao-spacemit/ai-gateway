@@ -131,7 +131,7 @@ function ASRTryPage({ model, onBack }) {
             + '&language=' + language
             + '&sample_rate=16000&partial=true'
             + '&enable_emotion=' + String(activeEnableEmotion);
-          const ws = new WebSocket(wsUrl);
+          const ws = new WebSocket(wsUrl, window.gatewayAuth.wsProtocols());
           wsRef.current = ws;
 
           ws.onmessage = (e) => {

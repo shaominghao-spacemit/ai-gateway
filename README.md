@@ -4,34 +4,32 @@ SpacemiT AI Gateway — ASR / TTS / VAD / Vision / LLM / Embed / Rerank 统一 H
 
 ## 安装
 
-生产部署用 `.deb` 包一键完成 apt 依赖、Python 环境、systemd 服务注册启动，无需手动操作。源码开发或调试请参考 [软件调试](#软件调试) 章节。
-
-
-`spacemit-ai-gateway` 已发布到 SpacemiT 内部 apt 源。包内带完整的安装钩子：apt 系统依赖随 `debian/control` 的 `Depends` 字段自动解析；postinst 脚本会在 `/opt/spacemit-ai-gateway/venv` 创建虚拟环境，并按 `/opt/spacemit-ai-gateway/requirements-runtime.txt` 从 SpacemiT GitLab PyPI 拉取锁定版本的 `spacemit-asr/tts/vad/audio/vision` 与 `spacemit-ai-gateway` wheel；systemd 单元 `spacemit-ai-gateway.service` 由 `dh_installsystemd` 自动注册并启动。
-`.deb` 同时安装运行配置到 `/opt/spacemit-ai-gateway/configs/`，安装模型清单 schema 到 `/opt/spacemit-ai-gateway/schema/`。
+本分支的 Debian 安装方案将 Python wheel 在构建阶段打进 deb，`postinst` 只校验摘要并离线安装到 `/opt/spacemit-ai-gateway/runtime-<摘要>`，校验成功后切换 `venv` 链接。系统 ORT/OpenCV、ffmpeg 等仍由 `debian/control` 的 apt 依赖提供；离线部署前需准备这些系统包。包绑定构建时 Python 次版本和 ABI，系统升级后需重新构建。内部 apt 当前发布版本不一定包含本分支整改。
 
 ```bash
-sudo apt update
-sudo apt install spacemit-ai-gateway
-```
-
-安装过程会从 SpacemiT 内网 PyPI 按 `requirements-runtime.txt` 中锁定的 wheel 版本拉取多个 wheel；若内部 PyPI 缺少任一版本，安装会失败以避免混合运行时。首次执行可能耗时几分钟，请耐心等待。完成后查看运行状态与日志：
-
-```bash
-systemctl status spacemit-ai-gateway
+sudo apt install ./spacemit-ai-gateway.deb
+systemctl status spacemit-ai-gateway spacemit-ai-gateway-frontend
 journalctl -u spacemit-ai-gateway -f
 ```
 
-安装完成后，两个 systemd 服务同时启动：
+两个服务固定使用系统账户 `spacemit-ai-gateway`，与安装者及 `SUDO_USER` 无关。运行 HOME 为 `/var/lib/spacemit-ai-gateway`，模型缓存及数据库默认落在其下；程序及 wheel 位于 root 拥有的 `/opt/spacemit-ai-gateway`。管理员配置 `/etc/spacemit-ai-gateway/base.yaml` 由 dpkg conffile 管理。环境变量配置可写入 `/etc/spacemit-ai-gateway/environment`，重启服务生效，优先于 YAML。
 
-| 服务 | 端口 | 说明 |
+| 服务 | 默认监听 | 说明 |
 |------|------|------|
-| `spacemit-ai-gateway` | 18790 | backend HTTP/WebSocket API |
-| `spacemit-ai-gateway-frontend` | 8326 | 前端 console 静态站点（`python3 -m http.server`） |
+| `spacemit-ai-gateway` | `127.0.0.1:18790` | HTTP/WebSocket API |
+| `spacemit-ai-gateway-frontend` | `127.0.0.1:8326` | console 静态站点 |
 
-前端访问入口：`http://<设备 IP>:8326/`（landing 页）或 `http://<设备 IP>:8326/console/`（控制台）。前端通过浏览器内 `@babel/standalone` 现编译 JSX，无需 Node/构建步骤。
+远程使用时可建立 SSH 隧道，再打开 `http://127.0.0.1:8326/console/`：
 
-卸载：`sudo apt remove spacemit-ai-gateway` 会停止两个服务、删除 systemd unit、前端静态资源和 `/opt/spacemit-ai-gateway/venv`。如果 `/opt/spacemit-ai-gateway/` 下还有遗留目录，用 `sudo apt purge spacemit-ai-gateway` 强制清理。
+```bash
+ssh -L 8326:127.0.0.1:8326 -L 18790:127.0.0.1:18790 <设备用户>@<设备IP>
+```
+
+Deb 首次安装默认启用鉴权，设备密钥在 root 可读的 `/etc/spacemit-ai-gateway/credentials.env`，升级时保留。管理员读取后在 console 顶部输入 API key；HTTP 支持 `X-API-Key` 或 Bearer，WS 使用子协议传递凭据，不将 key 放入 URL。若开放远程监听，应先配置受信的 TLS 反向代理和访问策略。console 仍使用外部 CDN 加载 React/Babel，因此完整离线浏览器环境暂不可用。
+
+`apt remove` 清理包的程序、unit 和标记过的运行环境，保留 `/etc` 配置、设备凭据、模型与数据库。`apt purge` 进一步删除 conffile 和包生成的凭据，保留模型数据、管理员 drop-in 和迁移备份；模型需管理员明确删除。升级前的旧虚拟环境保存在 `venv.legacy`，不会递归删除 `/opt` 下的管理员文件。
+
+旧 `/opt/spacemit-ai-gateway/configs/base.yaml` 会备份到 `/etc/spacemit-ai-gateway/legacy-base.yaml`；新 `/etc` 配置仍为包默认值时迁移旧参数并收紧监听地址，已有管理员 `/etc` 配置保留。旧安装器精确生成的 `runtime-user.conf` 备份后移除，自定义 drop-in 保留；管理员若自行覆盖 `User`、监听地址或鉴权，需核对实际生效值。旧用户缓存不自动复制到新 HOME，避免大模型重复占盘和归属变更；可在停服务后有选择地复制，并设置为服务账户可读写。
 
 ## 软件调试
 
@@ -123,7 +121,7 @@ curl -s localhost:18790/healthz | jq .
 ## 配置
 
 配置文件位于 `configs/`。源码运行默认使用 wheel 包内置配置；`.deb` 安装后 systemd 服务显式读取
-`/opt/spacemit-ai-gateway/configs/base.yaml`，便于设备侧直接查看和调整运行配置。
+`/etc/spacemit-ai-gateway/base.yaml`，便于设备侧直接查看和调整运行配置。
 
 | 文件 | 说明 |
 |------|------|
@@ -269,7 +267,7 @@ curl -s 'localhost:18790/v1/errors/recent?domain=llm&model=qwen3-0.6b-q4_0&limit
 
 ### 鉴权与 IP 白名单
 
-默认不启用鉴权或 IP 白名单。生产环境如需限制访问，先开启 `auth.enabled`，再配置 API Key 或外部白名单文件。白名单文件修改后自动热加载，无需重启：
+源码默认不启用鉴权或 IP 白名单，Deb 安装默认启用 API key。若设置 IP 白名单，名单外一律拒绝，名单内可免 key；因此不要将不受信的网络加入名单。白名单文件修改后自动热加载，无需重启：
 
 ```yaml
 # configs/base.yaml
@@ -287,7 +285,7 @@ auth:
 10.0.91.5
 ```
 
-`auth.enabled: false` 时不限制访问；白名单文件为空或未配置时只校验 API Key。
+`auth.enabled: false` 时不限制访问；未配置白名单时校验 API key。`/healthz` 和域健康探针保持可探测。全局状态汇总八域；`idle/unloaded` 代表尚未加载，不能据此宣称模型推理已就绪；缺失、失败或降级域使整体为 `degraded`。
 
 ## 集成指南
 
@@ -527,6 +525,15 @@ spacemit-ai-gateway/
 
 ## 测试
 
+宿主回归不安装 RISC-V 专有 SDK；使用测试后端检验路由和服务行为，不能代替板端真实模型推理验收：
+
+```bash
+PYTHONPATH=src uv run --no-project --isolated --with-requirements tests/requirements-host.txt python -m pytest tests -q
+```
+
+安装整改回归目录：`tests/unit/test_foundation_{packaging,auth_settings,health}.py` 、`tests/unit/test_device_lifecycle.py` 与 `tests/unit/test_vad_load_health.py`。下载状态测试使用本地 HTTP 测试源和临时缓存；缺少 `llama-server` 时跳过真实 LLM 推理测试。板端流程为 `bibit-dev build <worktree> --recipe gateway`、`bibit-dev verify deploy <artifact_id>`；生命周期脚本在独占租约内先备份并验证旧包可回滚，再覆盖升级、remove/purge、真实 Silero 推理及故障恢复，最终恢复原包和服务。缺少可恢复旧 deb 或真实模型时先拒绝修改。
+
+
 ```bash
 # 单元测试
 pytest tests/
@@ -719,7 +726,7 @@ pytest tests/
 
 | 方法 | 端点 | 说明 |
 |------|------|------|
-| GET | `/healthz` | 聚合健康检查（ASR + TTS + VAD + LLM + VLM + Vision） |
+| GET | `/healthz` | 聚合健康检查（ASR + TTS + VAD + LLM + Embed + Rerank + VLM + Vision） |
 | GET | `/v1/errors` | 错误码清单（见[错误码](#错误码)） |
 | GET | `/v1/errors/recent` | 最近的模型故障，可按域 / 模型 / 时间过滤（见[模型故障记录](#模型故障记录)） |
 
@@ -738,3 +745,7 @@ ASR / TTS / VAD / Vision / LLM / Embed / Rerank 均支持多后端，可通过 `
 ## License
 
 Apache-2.0
+
+### OpenCV Python 运行依赖
+
+构建时从 SpacemiT 软件源下载并固定 `opencv-python==5.0.0.93` 的 RISC-V wheel，随 Deb 一起离线安装到 Gateway 自身的运行环境。系统 `opencv-spacemit` 不保证 Python 模块可以直接导入；本包不修改系统 Python 路径、OpenCV 或其它应用的运行环境。

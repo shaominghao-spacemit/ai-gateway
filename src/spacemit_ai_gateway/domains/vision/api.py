@@ -116,13 +116,21 @@ def domain_health_summary() -> dict[str, Any]:
     if not models:
         return {"ready": False, "state": "uninitialized", "backend": "unknown"}
 
+    failed_model = next((m for m in models if m.status == "error"), None)
+    if failed_model is not None:
+        return {
+            "ready": False,
+            "state": "degraded",
+            "backend": failed_model.backend or "unknown",
+        }
+
     ready_models = [m for m in models if m.status == "ready"]
     if ready_models:
         backend = ready_models[0].backend or "unknown"
         return {"ready": True, "state": "ready", "backend": backend}
 
-    # 模型已注册但未就绪时，暴露当前状态用于排障
-    first = models[0]
+    # 加载中的模型不能被正常 unloaded 模型掩盖。
+    first = next((m for m in models if m.status == "loading"), models[0])
     return {"ready": False, "state": first.status, "backend": first.backend or "unknown"}
 
 

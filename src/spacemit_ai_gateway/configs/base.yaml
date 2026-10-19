@@ -3,7 +3,7 @@
 app:
   name: "SpacemiT AI Gateway"
   version: "0.2.0"
-  host: "0.0.0.0"
+  host: "127.0.0.1"
   port: 18790
   debug: false
 
@@ -34,6 +34,21 @@ asr:
     endpoint: "http://127.0.0.1:8063/v1/chat/completions"
     model: "qwen3-asr"
     timeout: 60
+  managed:
+    enabled: false
+    sensevoice_dir: "/opt/bibit/models/asr/sensevoice"
+    lock_path: "/run/lock/bibit-asr/engine.lock"
+    startup_timeout: 60
+    shutdown_timeout: 10
+    qwen3:
+      model_dir: "/opt/bibit/models/asr/qwen3-asr-0.6B-dynq-q40"
+      server_bin: "/usr/bin/llama-server"
+      port: 8063
+      threads: 2
+      batch_threads: 2
+      ctx_size: 4096
+      ep_affinity: "8;9"
+      max_tokens: 100
   stream:
     session_ttl_s: 300
     event_queue_size: 64

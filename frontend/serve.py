@@ -15,7 +15,7 @@ class NoCacheHandler(SimpleHTTPRequestHandler):
 def main():
     parser = argparse.ArgumentParser(description="Serve the AI Gateway console without browser caching.")
     parser.add_argument("port", nargs="?", type=int, default=8326)
-    parser.add_argument("--bind", default="::")
+    parser.add_argument("--bind", default="127.0.0.1")
     args = parser.parse_args()
 
     class Server(ThreadingHTTPServer):

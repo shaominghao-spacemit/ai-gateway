@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 import tarfile
 from pathlib import Path
@@ -37,6 +38,32 @@ def test_ensure_archive_model_flattens_archive_subdir(tmp_path):
     )
 
     assert (model_dir / "tokens.txt").read_text(encoding="utf-8") == "tokens"
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses directory write permissions")
+def test_archive_download_needs_write_access_only_inside_model_directory(tmp_path):
+    source = tmp_path / "tokens.txt"
+    source.write_text("tokens", encoding="utf-8")
+    archive_path = tmp_path / "model.tar.gz"
+    with tarfile.open(archive_path, "w:gz") as archive:
+        archive.add(source, arcname="tokens.txt")
+    parent = tmp_path / "administrator-models"
+    model_dir = parent / "sensevoice"
+    model_dir.mkdir(parents=True)
+    existing = model_dir / "existing.onnx"
+    existing.write_bytes(b"preserved model")
+    parent.chmod(0o555)
+    try:
+        ensure_archive_model(
+            model_dir, url=archive_path.as_uri(), archive_name="model.tar.gz",
+            required_paths=("tokens.txt", "existing.onnx"),
+        )
+        assert (model_dir / "tokens.txt").read_text(encoding="utf-8") == "tokens"
+        assert existing.read_bytes() == b"preserved model"
+        assert list(parent.iterdir()) == [model_dir]
+        assert not list(model_dir.glob(".model-download-*"))
+    finally:
+        parent.chmod(0o755)
 
 
 def test_ensure_remote_file_downloads_file_url(tmp_path):

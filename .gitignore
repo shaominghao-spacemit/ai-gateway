@@ -60,3 +60,7 @@ src/ai_provider/domains/vision/scripts/
 
 uv.lock
 CLAUDE.md
+
+# 调度配方的标准输出
+/spacemit-ai-gateway.deb
+/test-device-lifecycle.py

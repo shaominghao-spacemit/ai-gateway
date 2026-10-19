@@ -118,7 +118,18 @@ class AsrService:
             "started_at": time.time(),
         }
         self._engine_pending_restart = False
+        self._legacy_asr_used = bool(backends)
         self._load_lock = asyncio.Lock()
+        from .managed import ManagedAsr, register_participant
+        self._legacy_fd = None
+        self._injected_backends = bool(backends)
+        self._participant_error = None
+        try:
+            register_participant(self._config.managed.lock_path)
+        except OSError:
+            # 不拖垮 LLM/Embed 等其他域；所有实际 ASR 加载仍明确拒绝。
+            self._participant_error = 'participant_registration_failed'
+        self.managed = ManagedAsr(self)
         self.downloads = DownloadTracker(
             "asr", self._model_assets, lambda: list(self._allowed_backends), download_config
         )
@@ -178,6 +189,10 @@ class AsrService:
             raise
 
     async def _load_backend_locked(self, name: str, *, force_reload: bool = False) -> AsrBackend:
+        if self.managed.active:
+            from .managed import conflict
+            raise conflict("managed_asr_owned")
+        self._legacy_asr_used = True
         existing = self._backends.get(name)
         if (
             existing is not None
@@ -199,6 +214,21 @@ class AsrService:
                 details={"available": self._allowed_backends},
             )
 
+        if not self._injected_backends and self._legacy_fd is None:
+            from .managed import conflict, foreign_processes, lock_reason, register_participant, take_lock
+            try:
+                register_participant(self._config.managed.lock_path)
+                self._legacy_fd = take_lock(self._config.managed.lock_path)
+            except OSError as exc:
+                raise conflict(lock_reason(exc)) from exc
+            # SDK 的线程/扩展寿命无法由 unload 确认；即使加载失败也留锁至进程退出。
+        if not self._injected_backends:
+            from .managed import conflict, foreign_processes
+            reason = await asyncio.to_thread(
+                foreign_processes, None, self._config.managed.lock_path,
+                self._config.managed.qwen3.port)
+            if reason:
+                raise conflict(reason)
         # 先下载（失败直接报下载错误码），再卸载旧模型，避免下载失败后什么都没加载
         if self.downloads.supports(name) and sdk_installed("spacemit_asr"):
             await self.downloads.ensure(name)
@@ -496,14 +526,15 @@ class AsrService:
         return {"loaded": True, "model_id": model_id, "state": backend.state.value}
 
     async def unload_model(self, model_id: str) -> dict:
-        if model_id not in self._backends:
-            raise ModelNotLoaded(
-                f"model '{model_id}' not loaded",
-                details={"available": list(self._backends.keys())},
-            )
-        backend = self._backends.pop(model_id)
-        await backend.shutdown()
-        return {"unloaded": True, "model_id": model_id}
+        async with self._load_lock:
+            if model_id not in self._backends:
+                raise ModelNotLoaded(
+                    f"model '{model_id}' not loaded",
+                    details={"available": list(self._backends.keys())},
+                )
+            backend = self._backends.pop(model_id)
+            await backend.shutdown()
+            return {"unloaded": True, "model_id": model_id}
 
     async def switch_default(self, model_id: str) -> dict:
         await self._ensure_backend(model_id)
@@ -511,6 +542,7 @@ class AsrService:
         return {"switched": True, "default_model_id": model_id}
 
     async def shutdown(self) -> None:
+        await self.managed.shutdown()
         await self.downloads.shutdown()
         await self._shutdown_loaded_backends()
 
