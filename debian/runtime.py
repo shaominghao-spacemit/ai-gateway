@@ -518,6 +518,23 @@ def migrate_legacy(root=Path("/")):
                         paths.append((str(Path(absolute).parent) if field == "db_path" else absolute, True))
 
         storage_paths(data)
+        # managed ASR 是升级后新增的配置段；旧 YAML 里没有它，缺省路径必须补齐，
+        # 否则升级后开启 managed 会去旧 HOME 缓存找模型。管理员已写的值保持不变。
+        if default.is_file():
+            managed_default = (yaml.safe_load(default.read_text()) or {}).get("asr", {}).get("managed")
+            if isinstance(managed_default, dict):
+                asr = data.setdefault("asr", {})
+                if isinstance(asr, dict):
+                    managed = asr.setdefault("managed", {})
+                    if isinstance(managed, dict):
+                        for key, value in managed_default.items():
+                            if key == "qwen3" and isinstance(value, dict):
+                                qwen = managed.setdefault("qwen3", {})
+                                if isinstance(qwen, dict):
+                                    for name, item in value.items():
+                                        qwen.setdefault(name, item)
+                            else:
+                                managed.setdefault(key, value)
         rendered = yaml.safe_dump(data, allow_unicode=True, sort_keys=False)
         replace_config = (not current.exists() or
                           (default.is_file() and current.read_bytes() == default.read_bytes()) or

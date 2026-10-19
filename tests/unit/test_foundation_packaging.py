@@ -393,6 +393,9 @@ def test_legacy_config_is_backed_up_and_migrated_once_preserving_host(legacy_tre
     migrated = yaml.safe_load((etc / "base.yaml").read_text())
     assert migrated["app"] == {"host": "0.0.0.0", "port": 19876}
     assert migrated["asr"]["model_dir"] == "/srv/models/custom-asr"
+    assert migrated["asr"]["managed"]["sensevoice_dir"] == "/opt/bibit/models/asr/sensevoice"
+    assert (migrated["asr"]["managed"]["qwen3"]["model_dir"]
+            == "/opt/bibit/models/asr/qwen3-asr-0.6B-dynq-q40")
     assert (etc / "legacy-base.yaml").read_bytes() == original
     assert legacy.read_bytes() == original
     assert (etc / ".legacy-migrated").is_file()
@@ -411,6 +414,18 @@ def test_legacy_config_does_not_replace_administrator_config(legacy_tree):
     assert admin.read_bytes() == original
     assert (etc / "legacy-base.yaml").read_bytes() == legacy.read_bytes()
     assert (etc / ".legacy-migrated").is_file()
+
+
+def test_legacy_upgrade_keeps_administrator_managed_overrides(legacy_tree):
+    root, etc, legacy = legacy_tree
+    data = yaml.safe_load(legacy.read_text())
+    data["asr"]["managed"] = {"sensevoice_dir": "/srv/admin/sensevoice"}
+    legacy.write_text(yaml.safe_dump(data))
+    runtime.migrate_legacy(root=root)
+    migrated = yaml.safe_load((etc / "base.yaml").read_text())
+    assert migrated["asr"]["managed"]["sensevoice_dir"] == "/srv/admin/sensevoice"
+    assert (migrated["asr"]["managed"]["qwen3"]["model_dir"]
+            == "/opt/bibit/models/asr/qwen3-asr-0.6B-dynq-q40")
 
 
 def test_legacy_config_can_replace_exact_bundled_default(legacy_tree):
