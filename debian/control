@@ -18,6 +18,7 @@ Depends: ${misc:Depends}, ${shlibs:Depends},
  python3-spacemit-ort,
  spacemit-onnxruntime,
  adduser,
+ acl,
  ${gateway:Python},
  python3-venv
 Description: auto-generated package by debmake

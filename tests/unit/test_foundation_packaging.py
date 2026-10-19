@@ -11,6 +11,7 @@ import subprocess
 import sys
 import sysconfig
 import zipfile
+import stat
 
 import pytest
 import yaml
@@ -39,6 +40,33 @@ def write_file(path, content):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
     return path
+
+
+def test_voice_key_install_is_atomic_private_and_idempotent(tmp_path, monkeypatch):
+    """首次发布使用新随机值；合法旧值原样保留，符号链接被安全替换。"""
+    key = tmp_path / "etc/spacemit-ai-gateway/voice-api-key"
+    key.parent.mkdir(parents=True)
+    monkeypatch.setattr(runtime.grp, "getgrnam", lambda name: type("Group", (), {"gr_gid": 123})(), raising=False)
+    monkeypatch.setattr(runtime.os, "fchown", lambda fd, uid, gid: None)
+    valid = iter([False, True, False])
+    monkeypatch.setattr(runtime, "_valid_voice_key", lambda existing, gid: next(valid))
+    spy = []
+    original_replace = runtime.os.replace
+    monkeypatch.setattr(runtime.os, "replace", lambda source, target: spy.append((source, target)) or original_replace(source, target))
+    assert runtime.ensure_voice_key(key)
+    first = key.read_text().strip()
+    assert 40 <= len(first) <= 64 and stat.S_IMODE(key.stat().st_mode) == 0o640
+    assert spy and spy[-1][1] == key
+    assert not runtime.ensure_voice_key(key)
+    assert key.read_text().strip() == first
+    target = tmp_path / "target"
+    target.write_text("must not be followed\n")
+    target.chmod(0o640)
+    key.unlink()
+    key.symlink_to(target)
+    assert runtime.ensure_voice_key(key)
+    assert not key.is_symlink() and target.read_text() == "must not be followed\n"
+    assert key.read_text().strip() != target.read_text().strip()
 
 
 def write_wheel(path, name="gateway-test", requirements=()):

@@ -24,6 +24,8 @@ PYUSER
         done
         install -d -m 0750 -o spacemit-ai-gateway -g spacemit-ai-gateway /var/lib/spacemit-ai-gateway
         install -d -m 0755 /etc/spacemit-ai-gateway
+        /usr/bin/python3 /usr/lib/spacemit-ai-gateway/runtime.py ensure-voice-key
+        /usr/bin/python3 /usr/lib/spacemit-ai-gateway/runtime.py grant-voice-key
         /usr/bin/python3 /usr/lib/spacemit-ai-gateway/runtime.py install
         /opt/spacemit-ai-gateway/venv/bin/python /usr/lib/spacemit-ai-gateway/runtime.py migrate
         ;;

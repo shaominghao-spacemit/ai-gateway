@@ -1,6 +1,7 @@
 """U2 配置优先级与统一鉴权回归，不依赖真实模型。"""
 
 import base64
+import os
 import shutil
 import socket
 import subprocess
@@ -10,7 +11,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from fastapi import FastAPI, WebSocket
+from fastapi import Depends, FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
@@ -77,7 +78,7 @@ def test_invalid_explicit_config_fails(tmp_path, monkeypatch, text):
 
 
 def make_app(monkeypatch, **auth):
-    from spacemit_ai_gateway.gateway.auth import GatewayAuthMiddleware
+    from spacemit_ai_gateway.gateway.auth import GatewayAuthMiddleware, verify_api_key
 
     settings = Settings(auth={"enabled": True, "api_keys": ["device-key"], **auth})
     monkeypatch.setattr("spacemit_ai_gateway.gateway.auth.get_settings", lambda: settings)
@@ -94,6 +95,21 @@ def make_app(monkeypatch, **auth):
 
     @app.get("/healthz")
     async def health():
+        return {"ok": True}
+
+    @app.get("/v1/asr/managed/status", dependencies=[Depends(verify_api_key)])
+    async def managed_status():
+        app.state.calls += 1
+        return {"ok": True}
+
+    @app.post("/v1/asr/managed/acquire", dependencies=[Depends(verify_api_key)])
+    async def managed_acquire():
+        app.state.calls += 1
+        return {"ok": True}
+
+    @app.post("/v1/asr/models/load")
+    async def load_model():
+        app.state.calls += 1
         return {"ok": True}
 
     @app.websocket("/{path:path}")
@@ -120,6 +136,106 @@ def test_write_denied_before_side_effect_and_cors_works(monkeypatch, method):
         assert client.get("/healthz").status_code == 200
         assert client.options("/write", headers={"Origin": "http://console", "Access-Control-Request-Method": "POST"}).status_code == 200
     assert app.state.calls == 2
+
+
+def install_voice_key(monkeypatch, tmp_path, content=b"voice-key\n", mode=0o640):
+    from spacemit_ai_gateway.gateway import auth
+
+    path = tmp_path / "voice-api-key"
+    path.write_bytes(content)
+    path.chmod(mode)
+    monkeypatch.setattr(auth, "VOICE_API_KEY_FILE", path)
+    monkeypatch.setattr(auth, "VOICE_API_KEY_OWNER", os.geteuid())
+    monkeypatch.setattr(auth, "VOICE_API_KEY_GROUP", "test-group")
+    monkeypatch.setattr(auth.grp, "getgrnam", lambda name: SimpleNamespace(gr_gid=os.getegid()))
+    return path
+
+
+def test_voice_key_is_scoped_to_exact_managed_asr_routes(monkeypatch, tmp_path):
+    install_voice_key(monkeypatch, tmp_path)
+    app = make_app(monkeypatch)
+    with TestClient(app) as client:
+        assert client.get("/v1/asr/managed/status", headers={"X-API-Key": "voice-key"}).status_code == 200
+        assert client.post("/v1/asr/managed/acquire", headers={"X-API-Key": "voice-key"}).status_code == 200
+        assert client.post("/write", headers={"X-API-Key": "voice-key"}).status_code == 403
+        assert client.post("/v1/asr/models/load", headers={"X-API-Key": "voice-key"}).status_code == 403
+        with client.websocket_connect("/v1/asr/managed/status",
+                                      headers={"X-API-Key": "voice-key"}) as ws:
+            assert ws.receive_json() == {"ok": True}
+        assert client.get("/v1/asr/managed/status", headers={"X-API-Key": "device-key"}).status_code == 200
+        assert client.post("/write", headers={"X-API-Key": "device-key"}).status_code == 200
+    assert app.state.calls == 5
+
+
+def test_voice_key_route_match_does_not_use_prefix(monkeypatch):
+    from spacemit_ai_gateway.gateway.auth import _is_managed_asr_path
+
+    assert _is_managed_asr_path("/v1/asr/managed/status")
+    assert _is_managed_asr_path("/v1/asr/managed/acquire")
+    assert _is_managed_asr_path("/v1/asr/managed/release")
+    assert _is_managed_asr_path("/v1/asr/managed/recognize")
+    assert not _is_managed_asr_path("/v1/asr/managed-evil")
+    assert not _is_managed_asr_path("/v1/asr/managed/status/extra")
+
+
+@pytest.mark.parametrize("content,mode,owner_offset,group_exists", [
+    (b"", 0o640, 0, True),
+    (b"key", 0o644, 0, True),
+    (b"key\n", 0o640, 1, True),
+    (b"key\n", 0o640, 0, False),
+    (b"bad key\n", 0o640, 0, True),
+    (b"k" * 4097, 0o640, 0, True),
+])
+def test_voice_key_rejects_untrusted_file(monkeypatch, tmp_path, content, mode, owner_offset, group_exists):
+    from spacemit_ai_gateway.gateway import auth
+
+    path = install_voice_key(monkeypatch, tmp_path, content, mode)
+    monkeypatch.setattr(auth, "VOICE_API_KEY_OWNER", os.geteuid() + owner_offset)
+    if not group_exists:
+        def missing_group(name):
+            raise KeyError(name)
+        monkeypatch.setattr(auth.grp, "getgrnam", missing_group)
+        assert auth._voice_api_key() is None
+    else:
+        with pytest.raises(RuntimeError, match="Voice API key"):
+            auth._voice_api_key()
+
+
+def test_voice_key_rejects_symlink(monkeypatch, tmp_path):
+    from spacemit_ai_gateway.gateway import auth
+
+    target = install_voice_key(monkeypatch, tmp_path)
+    link = tmp_path / "voice-link"
+    link.symlink_to(target)
+    monkeypatch.setattr(auth, "VOICE_API_KEY_FILE", link)
+    with pytest.raises(RuntimeError, match="not usable"):
+        auth._voice_api_key()
+
+
+def test_voice_key_reads_across_short_reads(monkeypatch, tmp_path):
+    from spacemit_ai_gateway.gateway import auth
+
+    install_voice_key(monkeypatch, tmp_path)
+    calls = []
+    real_read = os.read
+
+    def short_read(fd, size):
+        calls.append(size)
+        return real_read(fd, min(size, 2))
+
+    monkeypatch.setattr(auth.os, "read", short_read)
+    assert auth._voice_api_key() == "voice-key"
+    assert len(calls) > 1
+
+
+def test_broken_voice_key_does_not_break_admin_key(monkeypatch, tmp_path):
+    path = install_voice_key(monkeypatch, tmp_path, b"broken", mode=0o644)
+    app = make_app(monkeypatch)
+    with TestClient(app) as client:
+        assert client.post("/write", headers={"X-API-Key": "device-key"}).status_code == 200
+        assert client.get("/v1/asr/managed/status", headers={"X-API-Key": "device-key"}).status_code == 200
+        assert client.post("/write", headers={"X-API-Key": "broken"}).status_code == 403
+    assert path.exists()
 
 
 def test_whitelist_restricts_even_valid_key_and_bypasses_key_inside(monkeypatch, tmp_path):

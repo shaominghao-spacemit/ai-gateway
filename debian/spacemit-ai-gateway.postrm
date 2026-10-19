@@ -17,7 +17,9 @@ for path in app.glob('runtime-*'):
         shutil.rmtree(path)
 PY
         if [ "$1" = purge ]; then
-            rm -f /etc/spacemit-ai-gateway/credentials.env /etc/spacemit-ai-gateway/.legacy-migrated
+            rm -f /etc/spacemit-ai-gateway/credentials.env /etc/spacemit-ai-gateway/.legacy-migrated \
+              /etc/spacemit-ai-gateway/voice-api-key \
+              /etc/tmpfiles.d/spacemit-ai-gateway-voice-access.conf
         fi
         ;;
     upgrade|failed-upgrade|abort-install|abort-upgrade|disappear) ;;
