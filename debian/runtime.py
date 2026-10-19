@@ -92,8 +92,12 @@ def install_runtime(app=APP):
     backup = None
     if link.exists() and not link.is_symlink():
         backup = app / "venv.legacy"
-        if backup.exists():
-            raise RuntimeError("Legacy venv backup exists; preserve it before retrying")
+        # 升级→回滚→再升级会看到上一轮留下的备份；当前 venv 才是最新一代，
+        # 替换旧备份而不是让安装永久失败。
+        if backup.is_symlink() or (backup.exists() and not backup.is_dir()):
+            backup.unlink()
+        elif backup.is_dir():
+            shutil.rmtree(backup)
         link.rename(backup)
     try:
         os.replace(pending, link)

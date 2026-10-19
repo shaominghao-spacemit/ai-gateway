@@ -254,6 +254,24 @@ def test_install_failure_preserves_old_environment_and_retry_succeeds(
     assert (app_dir / "venv").resolve() == candidate
 
 
+def test_install_replaces_stale_legacy_backup_instead_of_blocking(app_dir, monkeypatch):
+    write_file(app_dir / "venv/bin/python", "current legacy environment")
+    write_file(app_dir / "venv.legacy/bin/python", "stale backup")
+    candidate = app_dir / f"runtime-{runtime.validate_bundle(app_dir / 'runtime')}"
+
+    def create(builder, env_dir):
+        write_file(Path(env_dir) / "bin/python", "candidate interpreter")
+
+    monkeypatch.setattr(runtime.venv.EnvBuilder, "create", create)
+    monkeypatch.setattr(
+        runtime.subprocess, "run",
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 0),
+    )
+    runtime.install_runtime(app=app_dir)
+    assert (app_dir / "venv").resolve() == candidate
+    assert (app_dir / "venv.legacy/bin/python").read_text() == "current legacy environment"
+
+
 def test_complete_candidate_is_revalidated_before_switch_and_can_retry(app_dir, monkeypatch, forbid_install):
     old = app_dir / "administrator-venv"
     write_file(old / "bin/python", "working old environment")
