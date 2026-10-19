@@ -59,6 +59,13 @@ def test_defaults_remain_local_and_source_auth_compatible():
     assert not get_settings().auth.enabled
 
 
+def test_default_managed_asr_paths_match_device_assets():
+    managed = get_settings().asr.managed
+    assert managed.sensevoice_dir == "/opt/bibit/models/asr/sensevoice"
+    assert managed.qwen3.model_dir == "/opt/bibit/models/asr/qwen3-asr-0.6B-dynq-q40"
+    assert managed.qwen3.server_bin == "/usr/bin/llama-server"
+
+
 def test_explicit_missing_config_fails(tmp_path, monkeypatch):
     path = str(tmp_path / "missing.yaml")
     with pytest.raises(FileNotFoundError, match="missing.yaml"):
