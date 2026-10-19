@@ -20,6 +20,21 @@ PY
             rm -f /etc/spacemit-ai-gateway/credentials.env /etc/spacemit-ai-gateway/.legacy-migrated \
               /etc/spacemit-ai-gateway/voice-api-key \
               /etc/tmpfiles.d/spacemit-ai-gateway-voice-access.conf
+            # migrate 生成的 drop-in 不属于 dpkg 文件清单；purge 不清掉会让下一次
+            # 升级读到已被删除的新配置路径（preinst 报 FileNotFoundError）。
+            rm -f /etc/systemd/system/spacemit-ai-gateway.service.d/00-legacy-runtime.conf \
+              /etc/systemd/system/spacemit-ai-gateway-frontend.service.d/00-legacy-runtime.conf \
+              /etc/systemd/system/spacemit-ai-gateway-frontend.service.d/legacy-listener.conf
+            rm -rf /etc/spacemit-ai-gateway/legacy-base.yaml \
+              /etc/spacemit-ai-gateway/legacy-effective-base.yaml \
+              /etc/spacemit-ai-gateway/legacy-context.json \
+              /etc/spacemit-ai-gateway/legacy-storage-acl.jsonl \
+              /etc/spacemit-ai-gateway/legacy-credentials.env \
+              /etc/spacemit-ai-gateway/spacemit-ai-gateway-legacy-runtime-user.conf \
+              /etc/spacemit-ai-gateway/spacemit-ai-gateway-frontend-legacy-runtime-user.conf
+            rmdir /etc/systemd/system/spacemit-ai-gateway.service.d \
+              /etc/systemd/system/spacemit-ai-gateway-frontend.service.d 2>/dev/null || true
+            systemctl daemon-reload >/dev/null 2>&1 || true
         fi
         ;;
     upgrade|failed-upgrade|abort-install|abort-upgrade|disappear) ;;

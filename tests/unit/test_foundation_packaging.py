@@ -977,6 +977,28 @@ def test_preinst_copies_effective_custom_yaml_before_unpack(tmp_path, monkeypatc
     assert 'false' in backup.read_text()
 
 
+def test_preinst_falls_back_when_effective_config_is_not_unpacked(tmp_path, monkeypatch):
+    shown = ('User=root\nMainPID=0\n'
+             'Environment=HOME=/root SPACEMIT_AI_GATEWAY_CONFIG=/etc/spacemit-ai-gateway/base.yaml\n')
+    monkeypatch.setattr(subprocess, 'run', lambda *a, **kw: subprocess.CompletedProcess(a, 0, shown, ''))
+    etc = tmp_path / 'etc/spacemit-ai-gateway'
+    etc.mkdir(parents=True)
+    fallback = write_file(
+        tmp_path / 'opt/spacemit-ai-gateway/configs/base.yaml',
+        'auth: {enabled: false}\n',
+    )
+    preinst_snapshot()(root=tmp_path, proc=tmp_path / 'proc')
+    assert (etc / 'legacy-effective-base.yaml').read_bytes() == fallback.read_bytes()
+
+
+def test_purge_removes_generated_dropins_and_legacy_files():
+    source = (ROOT / 'debian/spacemit-ai-gateway.postrm').read_text()
+    for name in ('00-legacy-runtime.conf', 'legacy-listener.conf',
+                 'legacy-effective-base.yaml', 'legacy-base.yaml'):
+        assert name in source
+    assert 'daemon-reload' in source
+
+
 def test_upgrade_after_old_foundation_marker_still_migrates_storage(intent_upgrade):
     root, etc, _, grants = intent_upgrade
     write_file(etc / '.legacy-migrated', '')

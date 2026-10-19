@@ -154,17 +154,24 @@ def snapshot(root=Path("/"), proc=Path("/proc")):
             config_path = Path(properties.get('WorkingDirectory') or '/opt/spacemit-ai-gateway') / config_path
         effective = etc / 'legacy-effective-base.yaml'
         if not effective.exists():
-            contents = (root / str(config_path).lstrip('/')).read_bytes()
-            fd, pending = tempfile.mkstemp(prefix='.legacy-config-', dir=etc)
-            try:
-                with os.fdopen(fd, 'wb') as stream:
-                    stream.write(contents)
-                    stream.flush()
-                    os.fsync(stream.fileno())
-                os.replace(pending, effective)
-            finally:
-                if os.path.exists(pending):
-                    os.unlink(pending)
+            source = root / str(config_path).lstrip('/')
+            if not source.is_file():
+                # 升级/回滚可能留下指向新配置路径的旧 drop-in，而该文件尚未解包。
+                source = root / 'opt/spacemit-ai-gateway/configs/base.yaml'
+            if not source.is_file():
+                source = None
+            if source is not None:
+                contents = source.read_bytes()
+                fd, pending = tempfile.mkstemp(prefix='.legacy-config-', dir=etc)
+                try:
+                    with os.fdopen(fd, 'wb') as stream:
+                        stream.write(contents)
+                        stream.flush()
+                        os.fsync(stream.fileno())
+                    os.replace(pending, effective)
+                finally:
+                    if os.path.exists(pending):
+                        os.unlink(pending)
     context = {'user': user, 'home': home,
                'working_directory': properties.get('WorkingDirectory') or '/opt/spacemit-ai-gateway',
                'environment': {key: value for key, value in environment.items()
