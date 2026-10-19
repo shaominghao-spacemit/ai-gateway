@@ -442,6 +442,7 @@ def migrate_legacy(root=Path("/")):
     effective_backup = etc / "legacy-effective-base.yaml"
     if effective_backup.is_file():
         source = effective_backup
+    legacy_install = source.is_file()
     credentials = etc / "credentials.env"
     pattern = re.compile(r"\[Service\]\nUser=([^\n]+)\nGroup=[^\n]+\nEnvironment=HOME=([^\n]+)\nUMask=0022\n")
     context_path = etc / "legacy-context.json"
@@ -583,6 +584,27 @@ def migrate_legacy(root=Path("/")):
         private_write(credentials, "SPACEMIT_AI_GATEWAY_AUTH__ENABLED=true\n" +
                       env_line("SPACEMIT_AI_GATEWAY_AUTH__API_KEYS", json.dumps([secrets.token_urlsafe(32)])))
     for name in ("spacemit-ai-gateway", "spacemit-ai-gateway-frontend"):
+        unit = root / f"etc/systemd/system/{name}.service"
+        if legacy_install and not unit.exists() and not unit.is_symlink():
+            directory = root / f"etc/systemd/system/{name}.service.d"
+            directory.mkdir(parents=True, exist_ok=True)
+            path = directory / "00-legacy-runtime.conf"
+            if not path.exists() and not path.is_symlink():
+                content = (
+                    "[Service]\nUser=root\nGroup=\nEnvironment=\n"
+                    "Environment=PATH=/opt/spacemit-ai-gateway/venv/bin:/usr/local/bin:/usr/bin:/bin\n"
+                    "Environment=SPACEMIT_AI_GATEWAY_CONFIG=/etc/spacemit-ai-gateway/base.yaml\n"
+                    "UMask=0022\nNoNewPrivileges=false\nProtectSystem=false\n"
+                    "StateDirectory=\n"
+                )
+                if name == "spacemit-ai-gateway":
+                    content += "WorkingDirectory=/opt/spacemit-ai-gateway\n"
+                else:
+                    content += (
+                        "ExecStart=\nExecStart=/usr/bin/python3 "
+                        "/opt/spacemit-ai-gateway/frontend/serve.py 8326 --bind ::\n"
+                    )
+                private_write(path, content)
         path = root / f"etc/systemd/system/{name}.service.d/runtime-user.conf"
         if path.is_file() and pattern.fullmatch(path.read_text()):
             preserve(path, etc / f"{name}-legacy-runtime-user.conf")

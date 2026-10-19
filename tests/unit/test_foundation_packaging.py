@@ -484,6 +484,49 @@ def test_custom_dropin_is_preserved(legacy_tree, service, custom):
     assert not (etc / f"{service}-legacy-runtime-user.conf").exists()
 
 
+@pytest.mark.parametrize("service", SERVICES)
+def test_legacy_install_without_complete_unit_gets_compat_dropin(legacy_tree, service):
+    root, _, _ = legacy_tree
+    runtime.migrate_legacy(root=root)
+    content = (root / f"etc/systemd/system/{service}.service.d/00-legacy-runtime.conf").read_text()
+    assert content.startswith("[Service]\nUser=root\nGroup=\nEnvironment=\n")
+    assert "Environment=SPACEMIT_AI_GATEWAY_CONFIG=/etc/spacemit-ai-gateway/base.yaml\n" in content
+    if service == "spacemit-ai-gateway":
+        assert "WorkingDirectory=/opt/spacemit-ai-gateway\n" in content
+    else:
+        assert ("ExecStart=\nExecStart=/usr/bin/python3 "
+                "/opt/spacemit-ai-gateway/frontend/serve.py 8326 --bind ::\n") in content
+
+
+@pytest.mark.parametrize("service", SERVICES)
+def test_legacy_compat_dropin_does_not_replace_existing_file_or_symlink(legacy_tree, service):
+    root, _, _ = legacy_tree
+    dropin = root / f"etc/systemd/system/{service}.service.d/00-legacy-runtime.conf"
+    write_file(dropin, "administrator\n")
+    runtime.migrate_legacy(root=root)
+    assert dropin.read_text() == "administrator\n"
+    dropin.unlink()
+    target = write_file(root / "srv/admin-compat.conf", "symlink target\n")
+    dropin.parent.mkdir(parents=True, exist_ok=True)
+    dropin.symlink_to(target)
+    runtime.migrate_legacy(root=root)
+    assert dropin.is_symlink() and target.read_text() == "symlink target\n"
+
+
+@pytest.mark.parametrize("service", SERVICES)
+def test_administrator_complete_unit_gets_no_legacy_compat_dropin(legacy_tree, service):
+    root, _, _ = legacy_tree
+    unit = write_file(root / f"etc/systemd/system/{service}.service", "[Service]\nExecStart=/bin/true\n")
+    runtime.migrate_legacy(root=root)
+    assert unit.is_file()
+    assert not (root / f"etc/systemd/system/{service}.service.d/00-legacy-runtime.conf").exists()
+
+
+def test_fresh_install_does_not_create_legacy_compat_dropin(tmp_path):
+    runtime.migrate_legacy(root=tmp_path)
+    assert not list((tmp_path / "etc/systemd/system").glob("*.service.d/00-legacy-runtime.conf"))
+
+
 def test_legacy_migration_preserves_existing_backup(legacy_tree):
     root, etc, _ = legacy_tree
     backup = write_file(etc / "legacy-base.yaml", "original recovery config\n")
