@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from urllib.parse import urlsplit
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
@@ -218,15 +219,20 @@ class AsrService:
             from .managed import conflict, foreign_processes, lock_reason, register_participant, take_lock
             try:
                 register_participant(self._config.managed.lock_path)
+                self._participant_error = None
                 self._legacy_fd = take_lock(self._config.managed.lock_path)
             except OSError as exc:
                 raise conflict(lock_reason(exc)) from exc
             # SDK 的线程/扩展寿命无法由 unload 确认；即使加载失败也留锁至进程退出。
         if not self._injected_backends:
             from .managed import conflict, foreign_processes
+            port = self._config.managed.qwen3.port
+            endpoint = urlsplit(self._config.qwen3.endpoint)
+            if (name == 'qwen3-asr' and endpoint.hostname in {'127.0.0.1', 'localhost', '::1'}
+                    and (endpoint.port or (443 if endpoint.scheme == 'https' else 80)) == port):
+                port = None  # 旧 Qwen 适配器连接管理员维护的外部服务，不启动或接管它。
             reason = await asyncio.to_thread(
-                foreign_processes, None, self._config.managed.lock_path,
-                self._config.managed.qwen3.port)
+                foreign_processes, None, self._config.managed.lock_path, port)
             if reason:
                 raise conflict(reason)
         # 先下载（失败直接报下载错误码），再卸载旧模型，避免下载失败后什么都没加载
@@ -406,6 +412,22 @@ class AsrService:
         )
 
     async def healthz(self) -> dict:
+        while self.managed.active:
+            backend = self.managed.backend
+            state = BackendReadyState.WARMING_UP
+            if self.managed.failed or self.managed.closing:
+                state = BackendReadyState.FAILED
+            elif backend is not None:
+                try:
+                    healthy = await backend.healthy()
+                except Exception:
+                    healthy = False
+                if self.managed.backend is not backend:
+                    continue
+                healthy = healthy and not self.managed.failed and not self.managed.closing
+                state = BackendReadyState.READY if healthy else BackendReadyState.FAILED
+            return HealthResponse(ready=state.is_serving, state=state.value,
+                                  backend=self.managed.model or self._default).model_dump()
         default_backend = self._backends.get(self._default)
         state = default_backend.state if default_backend else BackendReadyState.IDLE
         return HealthResponse(

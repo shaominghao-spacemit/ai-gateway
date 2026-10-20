@@ -89,7 +89,33 @@ def _cleanup_stale_participants(directory: str) -> None:
 atexit.register(_cleanup_participants)
 
 
+def initialize_lock(lock_path: str) -> None:
+    directory = Path(lock_path).parent
+    try:
+        directory.mkdir(mode=0o2775, parents=True)
+    except FileExistsError:
+        pass
+    else:
+        directory.chmod(0o2775)
+    info = directory.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_mode & 0o002:
+        raise PermissionError("unsafe_engine_lock_directory")
+    try:
+        fd = os.open(lock_path, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC | os.O_NOFOLLOW, 0o660)
+    except FileExistsError:
+        fd = os.open(lock_path, os.O_RDWR | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK)
+    else:
+        os.fchmod(fd, 0o660)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o002:
+            raise PermissionError("unsafe_engine_lock_file")
+    finally:
+        os.close(fd)
+
+
 def register_participant(lock_path: str) -> int:
+    initialize_lock(lock_path)
     with _PARTICIPANT_LOCK:
         directory = str(Path(lock_path).parent.resolve())
         key = (os.getpid(), directory)
@@ -158,13 +184,13 @@ def engine_port_busy(port: int) -> bool:
 
 
 def foreign_processes(owned_pid: int | None = None, lock_path: str = "/run/lock/bibit-asr/engine.lock",
-                      engine_port: int = 8063) -> str:
+                      engine_port: int | None = 8063) -> str:
     """保守拒绝未参与 flock 的旧调用者；绝不杀死或接管它们。
 
     引擎归属以端口占用为准：llama-server 同样承载 LLM/Embedding，按进程名拦会挡住
     既有服务。已知边界：不参与协议的旧进程若在检查之后才启动 ASR，需由部署侧约束。
     """
-    if owned_pid is None and engine_port_busy(engine_port):
+    if owned_pid is None and engine_port is not None and engine_port_busy(engine_port):
         return f"unmanaged_asr_engine_port:{engine_port}"
     for proc in psutil.process_iter(["pid", "name", "cmdline"]):
         if proc.pid in {os.getpid(), owned_pid}:
@@ -190,7 +216,7 @@ def foreign_processes(owned_pid: int | None = None, lock_path: str = "/run/lock/
 
 
 def take_lock(path: str) -> int:
-    # tmpfiles 创建文件。不能在进程中 unlink/recreate，也不能主动 LOCK_UN 解开子进程的锁。
+    # 初始化保留既有 inode；不能 unlink/recreate，也不能主动 LOCK_UN 解开子进程的锁。
     fd = os.open(path, os.O_RDWR | os.O_CLOEXEC | os.O_NOFOLLOW)
     try:
         if not stat.S_ISREG(os.fstat(fd).st_mode):
@@ -216,6 +242,8 @@ class ManagedAsr:
         self.pending: set[asyncio.Task] = set()
         self.operations: set[asyncio.Task] = set()
         self.release_task: asyncio.Task | None = None
+        self.cleanup_task: asyncio.Task | None = None
+        self.stopping = False
 
     @property
     def active(self):
@@ -290,8 +318,10 @@ class ManagedAsr:
         task = self._tracked(self._acquire(owner, model, language), self.operations)
         try:
             result = await asyncio.shield(task)
-            self.delivered_token = result['token']
-            return result
+            async with self.service._load_lock:
+                self._authorize(owner, result['token'])
+                self.delivered_token = result['token']
+                return result
         except asyncio.CancelledError:
             # 加载仍须收尾；随后只释放本次返回的精确令牌，不碰后来取得资源的会话。
             self._tracked(self._abandon(task, owner), self.operations)
@@ -302,15 +332,37 @@ class ManagedAsr:
             result = await task
         except Exception:
             return  # 启动失败由 _acquire 清理；清理失败时保留锁并阻塞。
+        await self._release_undelivered(owner, result['token'])
+
+    async def _release_undelivered(self, owner, token):
         async with self.service._load_lock:
-            if (self.owner != owner or self.token != result['token']
-                    or self.delivered_token == result['token']):
+            if (self.owner != owner or self.token != token
+                    or self.delivered_token == token):
                 return
             if self.release_task is None:
                 self.closing = True
                 self.release_task = self._tracked(self._release(), self.operations)
             release = self.release_task
-        await asyncio.shield(release)
+        try:
+            await asyncio.shield(release)
+        except Exception:
+            self._retry_undelivered(owner, token)
+
+    def _retry_undelivered(self, owner, token):
+        if not self.stopping and (self.cleanup_task is None or self.cleanup_task.done()):
+            self.cleanup_task = asyncio.create_task(self._cleanup_undelivered(owner, token))
+
+    async def _cleanup_undelivered(self, owner, token):
+        while not self.stopping:
+            await asyncio.sleep(min(1, max(.05, self.config.managed.shutdown_timeout)))
+            async with self.service._load_lock:
+                if self.owner != owner or self.token != token or self.delivered_token == token:
+                    return
+                try:
+                    await self._dispose()
+                except Exception:
+                    continue  # 保留锁并重试，客户端从未收到可用于 release 的令牌。
+                return
 
     async def _acquire(self, owner, model, language):
         try:
@@ -350,17 +402,25 @@ class ManagedAsr:
                     if not await self.backend.healthy():
                         raise conflict("backend_unhealthy", 503)
                 except BaseException as exc:
-                    await self._dispose()
+                    try:
+                        await self._dispose()
+                    except Exception:
+                        self._retry_undelivered(owner, self.token)
                     if isinstance(exc, Exception) and not isinstance(exc, DomainError):
                         raise conflict(f"managed_backend_start_failed:{exc}", 503) from exc
                     raise
             token = self.token
-        result = await self.status(model, language)
-        if not result['ready']:
-            await self.release(owner, token)
-            raise conflict(result['reason'], 503)
-        result['token'] = token
-        return result
+        try:
+            result = await self.status(model, language)
+            if not result['ready']:
+                raise conflict(result['reason'], 503)
+        except Exception:
+            await self._release_undelivered(owner, token)
+            raise
+        async with self.service._load_lock:
+            self._authorize(owner, token)
+            result['token'] = token
+            return result
 
     def _authorize(self, owner, token):
         if not self.active or self.owner != owner or not hmac.compare_digest((self.token or '').encode(), token.encode()):
@@ -400,7 +460,7 @@ class ManagedAsr:
 
     async def _release(self):
         if self.pending:
-            await asyncio.gather(*tuple(self.pending), return_exceptions=True)
+            await asyncio.wait(tuple(self.pending), timeout=self.config.managed.shutdown_timeout)
         async with self.service._load_lock:
             await self._dispose()
         return {"released": True}
@@ -414,6 +474,12 @@ class ManagedAsr:
             self.closing = True
             self.release_task = None
             raise
+        # 真实进程已经退出，才取消未返回的 I/O 并释放父进程持有的锁。
+        pending = tuple(self.pending)
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
         if self.fd is not None:
             os.close(self.fd)
         self.fd = self.backend = self.owner = self.token = self.model = None
@@ -421,8 +487,15 @@ class ManagedAsr:
         self.delivered_token = None
         self.closing = self.failed = False
         self.release_task = None
+        if self.cleanup_task is not None and self.cleanup_task is not asyncio.current_task():
+            self.cleanup_task.cancel()
+        self.cleanup_task = None
 
     async def shutdown(self):
+        self.stopping = True
+        if self.cleanup_task is not None:
+            self.cleanup_task.cancel()
+            await asyncio.gather(self.cleanup_task, return_exceptions=True)
         while self.operations:
             await asyncio.gather(*tuple(self.operations), return_exceptions=True)
             await asyncio.sleep(0)

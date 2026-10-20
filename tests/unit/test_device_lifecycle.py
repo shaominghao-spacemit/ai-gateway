@@ -27,6 +27,55 @@ SPEC.loader.exec_module(lifecycle)
 
 
 class LifecycleTests(unittest.TestCase):
+    def test_admin_unit_upgrade_checks_config_and_stopped_environment(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            app, etc, data = root / 'app', root / 'etc', root / 'data'
+            (app / 'configs').mkdir(parents=True)
+            (app / 'configs/base.yaml').write_text('app: {}\n')
+            etc.mkdir()
+            unit = root / 'gateway.service'
+            probe = root / 'proc/123/environ'
+            probe.parent.mkdir(parents=True)
+            home = data / "audit-admin's-home"
+            probe.write_bytes(f'HOME={home}\0'.encode())
+            self.job.old_version = '0.0.19'
+            self.job.key = 'fixture-key'
+            def install():
+                self.assertTrue((etc / '.legacy-storage-migrated').is_file())
+                self.assertTrue((etc / '.legacy-assets-migrated').is_file())
+                environment = (data / 'audit-admin.env').read_text()
+                self.assertIn('HOME=' + str(home), environment)
+                self.assertIn('SPACEMIT_AI_GATEWAY_AUTH__API_KEYS=["fixture-key"]', environment)
+                old = app / 'configs/base.yaml'
+                old.unlink()
+                (etc / 'base.yaml').write_text('app: {}\n')
+                old.symlink_to(etc / 'base.yaml')
+            def run(*args, **kwargs):
+                if args[:2] == ('systemctl', 'show'):
+                    return SimpleNamespace(stdout='123', returncode=0)
+                if args[0] == str(app / 'venv/bin/python'):
+                    return SimpleNamespace(stdout=json.dumps({'home': str(home), 'models': str(home / 'models/llm')}))
+                return SimpleNamespace(stdout='', returncode=0)
+            with patch.object(lifecycle, 'APP', app), patch.object(lifecycle, 'ETC', etc), \
+                    patch.object(lifecycle, 'DATA', data), patch.object(lifecycle, 'MODEL', root / 'vad/model.onnx'), \
+                    patch.object(lifecycle, 'run', side_effect=run), \
+                    patch.object(lifecycle, 'wait_for', side_effect=lambda callback: callback()), \
+                    patch.object(lifecycle, 'api', return_value={'domains': {'asr': {'state': 'idle'}}}), \
+                    patch.object(lifecycle.pwd, 'getpwnam', return_value=SimpleNamespace(pw_uid=123, pw_gid=123)), \
+                    patch.object(lifecycle.os, 'chown'), \
+                    patch.object(lifecycle.subprocess, 'run', return_value=SimpleNamespace(returncode=0, stdout=json.dumps({'home': str(home), 'models': str(home / 'models/llm')}))), \
+                    patch.object(lifecycle, 'Path', side_effect=lambda path: unit if str(path) == '/etc/systemd/system/' + lifecycle.UNITS[0] else probe if str(path) == '/proc/123/environ' else Path(path)), \
+                    patch.object(self.job, 'restore') as restore, \
+                    patch.object(self.job, 'stop_services') as stop, \
+                    patch.object(self.job, 'install', side_effect=install):
+                self.job.check_admin_unit_upgrade()
+            restore.assert_called_once()
+            stop.assert_called_once()
+            self.assertIn('EnvironmentFile=' + str(data / 'audit-admin.env'), unit.read_text())
+            self.assertIn('mr7-admin-unit-stopped-environment-upgrade', self.job.checks)
+            self.assertIn('mr7-admin-existing-markers-systemd-environment-upgrade', self.job.checks)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -194,6 +243,29 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(request.call_args_list[0].args, ('/v1/vad/models/load',))
         self.assertEqual(request.call_args_list[1].args[1], 'packaged-secret')
         self.assertIn('packaged-credentials-authentication', self.job.checks)
+
+    def test_root_upgrade_requires_original_root_context(self):
+        etc = self.root / 'etc'
+        etc.mkdir()
+        self.job.original_contract = {'baseline': True}
+        for old_version, user, accepted in [('', 'root', False), ('0.0.19', 'operator', False),
+                                            ('0.0.19', 'root', True)]:
+            with self.subTest(old_version=old_version, user=user):
+                self.job.old_version = old_version
+                self.job.original_uids = {unit: [0, 0] for unit in lifecycle.UNITS} if user == 'root' else {}
+                (etc / 'legacy-context.json').write_text(json.dumps({'user': user}))
+                def read(path, *args, **kwargs):
+                    return 'Uid:\t0\t0\t0\t0\n' if str(path).startswith('/proc/') else json.dumps({'user': user})
+                with patch.object(lifecycle, 'ETC', etc), patch.object(Path, 'read_text', read), \
+                        patch.object(lifecycle, 'run', return_value=SimpleNamespace(stdout='123')), \
+                        patch.object(self.job, 'health'), \
+                        patch.object(self.job, 'service_contract', return_value={'baseline': True}):
+                    if accepted:
+                        self.job.check_services()
+                        self.assertIn('legacy-root-identity-preserved', self.job.checks)
+                    else:
+                        with self.assertRaisesRegex(lifecycle.CheckFailed, 'gateway runs as root'):
+                            self.job.check_services()
 
     def test_upgrade_checks_original_listener_and_auth_instead_of_fresh_defaults(self):
         original = {'listeners': {18790: ['0.0.0.0:18790'], 8326: ['127.0.0.1:8326']},
@@ -699,6 +771,8 @@ class LifecycleTests(unittest.TestCase):
                 elif action == 'stop':
                     services[unit] = 'inactive'
                     observed.append('stop-' + unit)
+                elif action == 'show':
+                    text = '0'
             elif command[0] == 'tar':
                 self.assertTrue(all(state == 'inactive' for state in services.values()))
                 observed.append(Path(command[command.index('-cpf') + 1]).name)
@@ -1193,6 +1267,77 @@ class ManagedLifecycleTests(unittest.TestCase):
             'result': 'blocked', 'reason': 'sensevoice_language_list_unsupported'})
 
 
+    def test_stalled_probe_preserves_wav_and_resumes_engine_on_failure(self):
+        audio = io.BytesIO()
+        with lifecycle.wave.open(audio, 'wb') as stream:
+            stream.setparams((1, 2, 16000, 0, 'NONE', 'not compressed'))
+            stream.writeframes(b'\x01\x00' * 16000)
+        audio = audio.getvalue()
+        body = b'multipart-prefix' + audio + b'multipart-suffix'
+        lock = self.root / 'engine.lock'
+        lock.touch()
+        self.job.key = 'fixture-key'
+        for fails in (False, True, 'early-unlock'):
+            with self.subTest(fails=fails), ExitStack() as stack:
+                held_lock = stack.enter_context(lock.open('r+b'))
+                lifecycle.fcntl.flock(held_lock, lifecycle.fcntl.LOCK_EX | lifecycle.fcntl.LOCK_NB)
+                pool = stack.enter_context(patch.object(lifecycle, 'ThreadPoolExecutor'))
+                submit = pool.return_value.__enter__.return_value.submit
+                future = submit.return_value
+                future.done.return_value = False
+                child = Mock()
+                child.exists.return_value = True
+                stat = Mock()
+                stat.read_text.side_effect = [
+                    '200 (qwen engine) ' + ' '.join(['0'] * 11 + [str(ticks), '0'])
+                    for ticks in (0, 100000)]
+                cmdline = Mock(read_bytes=lambda: b'qwen3-asr\0--port\08063\0')
+                paths = {'/proc/200': child, '/proc/200/stat': stat,
+                         '/proc/200/cmdline': cmdline}
+                stack.enter_context(patch.object(lifecycle, 'Path', side_effect=lambda p: paths[str(p)]))
+                stack.enter_context(patch.object(lifecycle, 'ENGINE_LOCK', lock))
+                stack.enter_context(patch.object(lifecycle, 'run', side_effect=[
+                    SimpleNamespace(stdout='100'), SimpleNamespace(stdout='200')]))
+                stack.enter_context(patch.object(lifecycle.time, 'sleep'))
+                killed = stack.enter_context(patch.object(lifecycle.os, 'kill'))
+                stack.enter_context(patch.object(self.job, 'health', side_effect=[
+                    {'status': 'ready' if fails is True else 'degraded', 'domains': {'asr': {'ready': False}}},
+                    {'domains': {'asr': {'state': 'idle'}}}]))
+                def release(*args, **kwargs):
+                    if args[0] == '/slots':
+                        return [{'id': 0, 'is_processing': submit.called}]
+                    killed.assert_called_once_with(200, lifecycle.signal.SIGSTOP)
+                    if fails == 'early-unlock':
+                        lifecycle.fcntl.flock(held_lock, lifecycle.fcntl.LOCK_UN)
+                        __import__('threading').Event().wait(.03)
+                    child.exists.return_value = False
+                    lifecycle.fcntl.flock(held_lock, lifecycle.fcntl.LOCK_UN)
+                    return {'released': True}
+                api = stack.enter_context(patch.object(lifecycle, 'api', side_effect=release))
+                def stopped(pid, sig):
+                    submit.assert_called_once()
+                    payload = submit.call_args.args[3]
+                    self.assertTrue(payload.startswith(b'multipart-prefix'))
+                    self.assertTrue(payload.endswith(b'multipart-suffix'))
+                    wav = payload[len(b'multipart-prefix'):-len(b'multipart-suffix')]
+                    with lifecycle.wave.open(io.BytesIO(wav), 'rb') as stream:
+                        self.assertEqual((stream.getnchannels(), stream.getsampwidth(),
+                                          stream.getframerate()), (1, 2, 16000))
+                        self.assertGreaterEqual(stream.getnframes(), 30 * 16000)
+                killed.side_effect = stopped
+                if fails is True:
+                    with self.assertRaisesRegex(lifecycle.CheckFailed, 'hidden by global health'):
+                        self.job.stalled_managed_release('owner', 'token', body, 'boundary', audio)
+                    self.assertEqual(killed.call_args.args, (200, lifecycle.signal.SIGCONT))
+                    self.assertTrue(all(call.args[0] == '/slots' for call in api.call_args_list))
+                elif fails == 'early-unlock':
+                    with self.assertRaisesRegex(lifecycle.CheckFailed, 'release lock observation failed'):
+                        self.job.stalled_managed_release('owner', 'token', body, 'boundary', audio)
+                else:
+                    self.job.stalled_managed_release('owner', 'token', body, 'boundary', audio)
+                    self.assertEqual(self.job.managed_evidence['inference_phase'], 'verified_slot_transition')
+                future.result.assert_called_once_with(timeout=90)
+
     def test_managed_case_confirms_real_flock_and_releases_after_inference_failure(self):
         from types import SimpleNamespace
         import os
@@ -1206,8 +1351,10 @@ class ManagedLifecycleTests(unittest.TestCase):
             with self.subTest(inference_failure=inference_failure):
                 fd = None
                 released = []
-                def api(path, key, body=None, **kwargs):
+                def api(path, key='', body=None, **kwargs):
                     nonlocal fd, owner
+                    if path == '/healthz':
+                        return {'domains': {name: {'ready': True} for name in lifecycle.DOMAINS}}
                     state = dict(protocol_version=1, model='qwen3_asr_0.6b', languages=['zh'],
                                  assets_ready=True, instance_id='fixture-process', reason='available',
                                  ready=fd is not None, owner=None if fd is None else owner,
@@ -1234,13 +1381,17 @@ class ManagedLifecycleTests(unittest.TestCase):
                 with patch.object(lifecycle, 'ENGINE_LOCK', engine), \
                         patch.object(lifecycle.grp, 'getgrnam', return_value=SimpleNamespace(gr_gid=123)), \
                         patch.object(lifecycle, 'request', side_effect=lambda path, *a: (401 if 'status?' in path else 403, b'')), \
-                        patch.object(lifecycle, 'api', side_effect=api):
+                        patch.object(lifecycle, 'api', side_effect=api), \
+                        patch.object(self.job, 'stalled_managed_release') as stalled:
                     case = dict(model='qwen3_asr_0.6b', language='zh', expect_text='expected')
                     if inference_failure:
                         with self.assertRaisesRegex(lifecycle.CheckFailed, 'transcript failed'):
                             self.job.managed_case(case, b'real speech fixture')
                     else:
+                        # 故障注入助手自行释放，模拟其真实释放行为。
+                        stalled.side_effect = lambda owner, token, *args: api('/release', self.job.key, {'owner': owner, 'token': token})
                         self.job.managed_case(case, b'real speech fixture')
+                        stalled.assert_called_once()
                 self.assertEqual(released, [True])
                 self.assertIsNone(fd)
                 with lock.open('r+b') as stream:

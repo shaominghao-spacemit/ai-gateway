@@ -1,0 +1,2 @@
+request_id	attempt_id	artifact_id	item	result	owner	note	evidence	event_seq	created_at
+req-2a181dca7ab045c2b7191a7acaeea02d	att-1e70e8c451da4527a2868ca0a068994c	gateway-526e725f0d98	MR7-U5-U6	pass	agent	Complete administrator unit retained; actual config open/read, custom HOME and model path, Deb lifecycle and original Intent/VAD pass; restored=true, safe_to_release=true	/home/shaominghao/CodeSpace/bibit-workspace/.integration-worktrees/gateway-mr7-audit-fixes/docs/verification/evidence/task-0a454fe6a6aa4051/admin-device-lifecycle.json	220084	2026-10-20T09:55:39.124049+00:00

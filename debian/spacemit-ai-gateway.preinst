@@ -12,23 +12,100 @@ case "$1" in
         if [ -f "$legacy" ] || [ -f "$backup" ]; then
             # 新 unit unpack 前记录旧进程实际 HOME/环境，不能用 sudo 调用者猜测。
             /usr/bin/python3 - <<'PYCONTEXT'
+import glob
 import json
 import os
 from pathlib import Path
 import pwd
+import re
 import shlex
 import subprocess
 import tempfile
 
 
 
-def read_environment(path):
-    values = {}
-    for line in path.read_text().splitlines():
-        if line.lstrip().startswith(('#', ';')) or '=' not in line:
+def parse_environment(text):
+    # preinst 在 unpack 前不能导入此文件；两份解析器由回归检查一致性。
+    if any(char in '\0\ufeff' or 0xfdd0 <= ord(char) <= 0xfdef
+           or ord(char) & 0xffff in (0xfffe, 0xffff) for char in text):
+        raise ValueError('Invalid character in systemd EnvironmentFile')
+    result = {}
+    index = 0
+    while index < len(text):
+        newline = re.search(r'[\r\n]', text[index:])
+        line_end = index + newline.start() if newline else len(text)
+        assignment = re.match(r'[ \t]*([A-Za-z_][A-Za-z0-9_]*)[ \t]*=', text[index:line_end])
+        if assignment is None:
+            index = line_end + 1
             continue
-        key, value = line.split('=', 1)
-        values[key.strip()] = ' '.join(shlex.split(value, comments=False))
+        key = assignment[1]
+        index += assignment.end()
+        state = 'start'
+        value = []
+        end = 0
+        while index < len(text):
+            char = text[index]
+            index += 1
+            if state == 'start':
+                if char in ' \t':
+                    continue
+                if char in '\r\n':
+                    break
+                if char in "'\"":
+                    state = char
+                    continue
+                state = 'plain'
+            if state == 'plain':
+                if char in '\r\n':
+                    break
+                if char == '\\':
+                    if index < len(text):
+                        following = text[index]
+                        index += 1
+                        if following not in '\r\n':
+                            value.append(following)
+                        end = len(value)
+                    continue
+                value.append(char)
+                if char not in ' \t\r':
+                    end = len(value)
+            else:
+                if char == state:
+                    state = 'start'
+                    continue
+                if state == '"' and char == '\\':
+                    if index == len(text):
+                        continue
+                    char = text[index]
+                    index += 1
+                    if char == '\n':
+                        continue
+                    if char not in '\\"`$':
+                        value.append('\\')
+                value.append(char)
+                end = len(value)
+        result[key] = ''.join(value[:end])
+    return result
+
+
+def read_environment(path):
+    return parse_environment(path.read_bytes().decode('utf-8'))
+
+
+def read_environment_files(root, name, optional):
+    if not Path(name).is_absolute() or any(char in name for char in '\\%'):
+        raise RuntimeError('Cannot resolve legacy EnvironmentFile path: ' + name)
+    # 保留文件项顺序；同一 wildcard 内按文件名排序，不能把可选 pattern 当成不存在的字面路径。
+    paths = sorted(glob.glob(glob.escape(str(root)) + '/' + name.lstrip('/')))
+    if not paths and not optional:
+        raise FileNotFoundError('Required legacy EnvironmentFile has no matches: ' + name)
+    values = {}
+    for path in paths:
+        try:
+            values.update(read_environment(Path(path)))
+        except FileNotFoundError:
+            if not optional:
+                raise
     return values
 
 
@@ -97,11 +174,7 @@ def offline_context(root, name='spacemit-ai-gateway.service', optional=False):
     for value in files:
         optional = value.startswith('-')
         name = value[1:] if optional else value
-        if not Path(name).is_absolute() or any(char in name for char in '*?['):
-            raise RuntimeError('Cannot resolve offline legacy EnvironmentFile: ' + name)
-        path = root / name.lstrip('/')
-        if path.exists() or not optional:
-            environment.update(read_environment(path))
+        environment.update(read_environment_files(root, name, optional))
     return properties, environment
 
 
@@ -119,7 +192,7 @@ def snapshot(root=Path("/"), proc=Path("/proc")):
         try:
             result = subprocess.run(
                 ['systemctl', 'show', 'spacemit-ai-gateway.service',
-                 '--property=MainPID,User,Environment,WorkingDirectory'],
+                 '--property=MainPID,User,Environment,EnvironmentFiles,WorkingDirectory'],
                 capture_output=True, text=True, check=False)
         except FileNotFoundError:
             pass
@@ -139,12 +212,26 @@ def snapshot(root=Path("/"), proc=Path("/proc")):
         environment.update(dict(value.split('=', 1) for value in raw.decode().split('\0') if '=' in value))
     elif not offline:
         # 旧 maintainer prerm 可能已停止服务；EnvironmentFile 不反映在 show Environment。
-        for name in ('credentials.env', 'environment'):
-            path = etc / name
-            if path.is_file():
-                environment.update(read_environment(path))
+        files = properties.get('EnvironmentFiles', '')
+        remaining = files
+        while remaining:
+            match = re.match(r'(.*?) \(ignore_errors=(yes|no)\)(?: |$)', remaining)
+            if match is None:
+                raise RuntimeError('Cannot resolve legacy systemd EnvironmentFiles')
+            name, optional = match.groups()
+            environment.update(read_environment_files(root, name, optional == 'yes'))
+            remaining = remaining[match.end():]
+        if 'EnvironmentFiles' not in properties:
+            # 兼容旧 systemd 未返回此属性的情况，优先读取有效 unit 的文件列表。
+            unit, values = offline_context(root, optional=True)
+            environment.update(values)
+            if not unit:
+                for name in ('credentials.env', 'environment'):
+                    path = etc / name
+                    if path.is_file():
+                        environment.update(read_environment(path))
     user = properties.get('User') or 'root'
-    home = environment.get('HOME') or pwd.getpwnam(user).pw_dir
+    home = environment.get('HOME') or (pwd.getpwuid(int(user)) if user.isdigit() else pwd.getpwnam(user)).pw_dir
     config = environment.get('SPACEMIT_AI_GATEWAY_CONFIG')
     if config:
         # 管理员自选 YAML 也在旧 HOME 和 WorkingDirectory 下解析，源文件留存。

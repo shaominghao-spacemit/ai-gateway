@@ -405,13 +405,392 @@ async def test_legacy_loading_obeys_lock_even_when_managed_disabled(tmp_path, mo
     os.close(service._legacy_fd)
 
 
-async def test_missing_shared_directory_never_loads_legacy(tmp_path, monkeypatch):
+async def test_unusable_shared_directory_never_loads_legacy(tmp_path, monkeypatch):
     from unittest.mock import Mock
     from spacemit_ai_gateway.domains.asr import service as service_module
+    (tmp_path / 'missing').write_text('not a directory')
     factory = Mock()
     monkeypatch.setitem(service_module.ASR_REGISTRY, 'sensevoice', factory)
     service = AsrService({}, 'sensevoice', SessionStore(300), config=AsrConfig(
         managed={'lock_path': str(tmp_path / 'missing' / 'engine.lock')}))
-    with pytest.raises(DomainError, match='engine_lock_unavailable'):
+    with pytest.raises(DomainError, match='engine_lock_permission_denied'):
         await service.load_model('sensevoice')
     factory.assert_not_called()
+
+
+async def test_source_install_initializes_shared_lock_without_replacing_inode(tmp_path, monkeypatch):
+    import os
+    from spacemit_ai_gateway.domains.asr import managed as module, service as service_module
+    from tests.unit.test_asr_service import ReloadableSenseVoiceBackend
+    lock = tmp_path / 'source-runtime' / 'engine.lock'
+    monkeypatch.setattr(module, 'foreign_processes', lambda *args: '')
+    monkeypatch.setitem(service_module.ASR_REGISTRY, 'sensevoice', ReloadableSenseVoiceBackend)
+    config = AsrConfig(backends=['sensevoice'], managed={'enabled': False, 'lock_path': str(lock)})
+    service = AsrService({}, 'sensevoice', SessionStore(300), config=config)
+    try:
+        await service.load_model('sensevoice')
+        inode = lock.stat().st_ino
+        another = AsrService({}, 'sensevoice', SessionStore(300), config=config)
+        with pytest.raises(DomainError, match='engine_lock_busy'):
+            await another.load_model('sensevoice')
+        assert lock.stat().st_ino == inode
+        assert lock.stat().st_mode & 0o007 == 0
+    finally:
+        await service.shutdown()
+        if service._legacy_fd is not None:
+            os.close(service._legacy_fd)
+
+
+async def test_legacy_qwen_uses_existing_external_engine(tmp_path, monkeypatch):
+    import os
+    import socket
+    from spacemit_ai_gateway.domains.asr import managed as module, service as service_module
+    from tests.unit.test_asr_service import ReloadableSenseVoiceBackend
+    monkeypatch.setattr(module.psutil, 'process_iter', lambda fields: [])
+    monkeypatch.setitem(service_module.ASR_REGISTRY, 'qwen3-asr', ReloadableSenseVoiceBackend)
+    lock = tmp_path / 'engine.lock'
+    lock.touch(mode=0o660)
+    with socket.socket() as listener:
+        listener.bind(('127.0.0.1', 0))
+        listener.listen()
+        port = listener.getsockname()[1]
+        config = AsrConfig(backends=['qwen3-asr'], qwen3={'endpoint': f'http://127.0.0.1:{port}/v1/chat/completions'},
+                           managed={'lock_path': str(lock), 'qwen3': {'port': port}})
+        service = AsrService({}, 'qwen3-asr', SessionStore(300), config=config)
+        try:
+            assert (await service.load_model('qwen3-asr'))['loaded']
+            # 托管模式仍不能接管这个外部监听者。
+            assert module.foreign_processes(None, str(lock), port) == f'unmanaged_asr_engine_port:{port}'
+        finally:
+            await service.shutdown()
+            if service._legacy_fd is not None:
+                os.close(service._legacy_fd)
+
+
+async def test_failed_acquire_cleanup_retries_without_delivered_token(managed, monkeypatch):
+    from spacemit_ai_gateway.domains.asr import managed as module
+    cleaned = asyncio.Event()
+    class Broken(FakeBackend):
+        async def start(self):
+            raise OSError('startup failed')
+        async def shutdown(self):
+            if not hasattr(self, 'shutdown_attempted'):
+                self.shutdown_attempted = True
+                raise TimeoutError('shutdown timeout')
+            await super().shutdown()
+            cleaned.set()
+    monkeypatch.setattr(module, 'ManagedBackend', Broken)
+    managed.config.managed.shutdown_timeout = .01
+    with pytest.raises(DomainError, match='start_failed'):
+        await managed.acquire(str(uuid4()), 'sensevoice', 'zh')
+    await asyncio.wait_for(cleaned.wait(), 1)
+    while managed.operations:
+        await asyncio.gather(*tuple(managed.operations))
+    assert not managed.active and managed.delivered_token is None
+    monkeypatch.setattr(module, 'ManagedBackend', FakeBackend)
+    owner = str(uuid4())
+    acquired = await managed.acquire(owner, 'sensevoice', 'zh')
+    await managed.release(owner, acquired['token'])
+
+
+async def test_managed_health_reports_backend_failure(managed):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from spacemit_ai_gateway.gateway import health
+    owner = str(uuid4())
+    acquired = await managed.acquire(owner, 'sensevoice', 'zh')
+    assert (await managed.service.healthz())['ready']
+    managed.backend.stopped.set()
+    failed = await managed.service.healthz()
+    assert failed['state'] == 'failed' and not failed['ready']
+    state = SimpleNamespace(asr_service=managed.service)
+    for name in ('tts', 'vad', 'llm', 'embed', 'rerank', 'vlm'):
+        setattr(state, f'{name}_service', SimpleNamespace(healthz=AsyncMock(return_value={'ready': True, 'state': 'ready'})))
+    result = await health.healthz(SimpleNamespace(app=SimpleNamespace(state=state)))
+    assert result['status'] == 'degraded' and result['domains']['asr']['state'] == 'failed'
+    await managed.release(owner, acquired['token'])
+
+
+@pytest.mark.parametrize('unsafe', ['directory_symlink', 'file_symlink', 'world_writable', 'fifo'])
+def test_lock_initialization_rejects_unsafe_paths(tmp_path, unsafe):
+    import os
+    from spacemit_ai_gateway.domains.asr.managed import initialize_lock
+    target = tmp_path / 'target'
+    target.mkdir()
+    lock = target / 'engine.lock'
+    lock.touch(mode=0o660)
+    inode = lock.stat().st_ino
+    if unsafe == 'directory_symlink':
+        directory = tmp_path / 'linked'
+        directory.symlink_to(target)
+        selected = directory / 'engine.lock'
+    elif unsafe == 'file_symlink':
+        selected = target / 'alias'
+        selected.symlink_to(lock)
+    elif unsafe == 'world_writable':
+        target.chmod(0o777)
+        selected = lock
+    else:
+        selected = target / 'pipe'
+        os.mkfifo(selected)
+    with pytest.raises(OSError):
+        initialize_lock(str(selected))
+    assert lock.stat().st_ino == inode
+
+
+async def test_undelivered_cleanup_retains_lock_and_shutdown_can_retry(managed, monkeypatch):
+    import os
+    from spacemit_ai_gateway.domains.asr import managed as module
+    class Broken(FakeBackend):
+        can_stop = False
+        async def start(self):
+            raise OSError('start failed')
+        async def shutdown(self):
+            if not self.can_stop:
+                raise TimeoutError('still running')
+            await super().shutdown()
+    monkeypatch.setattr(module, 'ManagedBackend', Broken)
+    managed.config.managed.shutdown_timeout = .01
+    with pytest.raises(DomainError, match='start_failed'):
+        await managed.acquire(str(uuid4()), 'sensevoice', 'auto')
+    await asyncio.sleep(.06)
+    with pytest.raises(BlockingIOError):
+        module.take_lock(managed.config.managed.lock_path)
+    assert managed.closing and managed.delivered_token is None
+    managed.backend.can_stop = True
+    await asyncio.wait_for(managed.shutdown(), 1)
+    fd = module.take_lock(managed.config.managed.lock_path)
+    os.close(fd)
+
+
+async def test_managed_health_failure_closing_and_release_to_idle(managed):
+    owner = str(uuid4())
+    result = await managed.acquire(owner, 'sensevoice', 'auto')
+    managed.failed = True
+    assert (await managed.service.healthz())['state'] == 'failed'
+    managed.failed = False
+    managed.closing = True
+    assert not (await managed.service.healthz())['ready']
+    await managed.release(owner, result['token'])
+    assert (await managed.service.healthz())['state'] == 'idle'
+
+
+async def test_acquire_status_exception_releases_undelivered_session(managed, monkeypatch):
+    async def unavailable(*args):
+        raise OSError('status probe failed')
+    monkeypatch.setattr(managed, 'status', unavailable)
+    with pytest.raises(OSError, match='status probe failed'):
+        await managed.acquire(str(uuid4()), 'sensevoice', 'zh')
+    assert not managed.active and managed.delivered_token is None
+
+
+async def test_acquire_retry_status_failure_preserves_delivered_session(managed, monkeypatch):
+    owner = str(uuid4())
+    acquired = await managed.acquire(owner, 'sensevoice', 'zh')
+    backend = managed.backend
+
+    async def unavailable(*args):
+        raise OSError('status probe failed')
+
+    monkeypatch.setattr(managed, 'status', unavailable)
+    with pytest.raises(OSError, match='status probe failed'):
+        await managed.acquire(owner, 'sensevoice', 'zh')
+    assert managed.backend is backend and not backend.stopped.is_set()
+    assert managed.delivered_token == acquired['token']
+    assert await managed.recognize(owner, acquired['token'], 'zh', b'\0\0') == 'sensevoice:zh'
+    assert await managed.release(owner, acquired['token']) == {'released': True}
+
+
+async def test_released_cleanup_does_not_block_next_failed_acquire_cleanup(managed, monkeypatch):
+    from spacemit_ai_gateway.domains.asr import managed as module
+
+    class Broken(FakeBackend):
+        can_stop = False
+        attempts = 0
+
+        async def start(self):
+            raise OSError('start failed')
+
+        async def shutdown(self):
+            self.attempts += 1
+            if not self.can_stop:
+                raise TimeoutError('still running')
+            await super().shutdown()
+
+    monkeypatch.setattr(module, 'ManagedBackend', Broken)
+    managed.config.managed.shutdown_timeout = .01
+    owner = str(uuid4())
+    with pytest.raises(DomainError, match='start_failed'):
+        await managed.acquire(owner, 'sensevoice', 'auto')
+    previous_cleanup = managed.cleanup_task
+    managed.backend.can_stop = True
+    await managed.release(owner, managed.token)
+    with pytest.raises(DomainError, match='start_failed'):
+        await managed.acquire(str(uuid4()), 'sensevoice', 'auto')
+    assert managed.cleanup_task is not previous_cleanup
+    backend = managed.backend
+    backend.can_stop = True
+
+    async def cleaned():
+        while managed.active:
+            await asyncio.sleep(.01)
+
+    await asyncio.wait_for(cleaned(), 1)
+    assert backend.attempts >= 2 and backend.stopped.is_set()
+
+
+async def test_health_probe_finishing_after_release_returns_idle(managed):
+    owner = str(uuid4())
+    acquired = await managed.acquire(owner, 'sensevoice', 'auto')
+    entered, finish = asyncio.Event(), asyncio.Event()
+
+    async def slow_health():
+        entered.set()
+        await finish.wait()
+        return False
+
+    managed.backend.healthy = slow_health
+    probe = asyncio.create_task(managed.service.healthz())
+    try:
+        await entered.wait()
+        await managed.release(owner, acquired['token'])
+    finally:
+        finish.set()
+    assert (await probe)['state'] == 'idle'
+
+
+async def test_old_health_probe_resamples_new_managed_model(managed):
+    owner = str(uuid4())
+    acquired = await managed.acquire(owner, 'sensevoice', 'auto')
+    entered, finish = asyncio.Event(), asyncio.Event()
+    async def old_health():
+        entered.set()
+        await finish.wait()
+        return False
+    managed.backend.healthy = old_health
+    probe = asyncio.create_task(managed.service.healthz())
+    try:
+        await entered.wait()
+        await managed.release(owner, acquired['token'])
+        await managed.acquire(str(uuid4()), 'qwen3_asr_0.6b', 'zh')
+    finally:
+        finish.set()
+    health = await probe
+    assert health['ready'] and health['backend'] == 'qwen3_asr_0.6b'
+
+
+async def test_sensevoice_busy_health_rejects_stopped_worker():
+    import contextlib
+    import os
+    import signal
+    import sys
+    import time
+    import psutil
+    from spacemit_ai_gateway.domains.asr.managed_backend import ManagedBackend
+
+    backend = ManagedBackend(AsrConfig(), 'sensevoice', ['auto'], -1)
+    backend.process = await asyncio.create_subprocess_exec(sys.executable, '-c', 'import time; time.sleep(60)')
+    backend.identity = ('sensevoice', ['auto'])
+    await backend.io_lock.acquire()
+    backend.exchange_started = time.monotonic()
+    try:
+        assert await backend.healthy()
+        os.kill(backend.pid, signal.SIGSTOP)
+
+        async def stopped():
+            while psutil.Process(backend.pid).status() != psutil.STATUS_STOPPED:
+                await asyncio.sleep(.01)
+
+        await asyncio.wait_for(stopped(), 1)
+        assert not await backend.healthy()
+    finally:
+        backend.io_lock.release()
+        with contextlib.suppress(ProcessLookupError):
+            backend.process.kill()
+        await backend.process.wait()
+
+
+@pytest.mark.parametrize('finishes', [False, True])
+async def test_sensevoice_running_worker_hang_degrades_without_cancelling_io(finishes):
+    import contextlib
+    import sys
+    from spacemit_ai_gateway.domains.asr.managed_backend import ManagedBackend
+
+    config = AsrConfig(managed={'startup_timeout': .2})
+    backend = ManagedBackend(config, 'sensevoice', ['auto'], -1)
+    script = ('import sys,time,json\n'
+              'for line in sys.stdin:\n'
+              ' request=json.loads(line)\n'
+              f' if request["op"]=="recognize": time.sleep({.3 if finishes else 60})\n'
+              ' print(json.dumps({"text":"ok"} if request["op"]=="recognize" '
+              'else {"model":"sensevoice","languages":["auto"]}),flush=True)\n')
+    backend.process = await asyncio.create_subprocess_exec(
+        sys.executable, '-c', script,
+        stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE)
+    backend.identity = ('sensevoice', ['auto'])
+    inference = asyncio.create_task(backend.recognize(b'\x00\x00', ['auto']))
+    try:
+        async def started():
+            while backend.exchange_started is None:
+                await asyncio.sleep(.001)
+        await asyncio.wait_for(started(), 1)
+        assert await backend.healthy()
+        await asyncio.sleep(.21)
+        assert not await backend.healthy()
+        assert backend.process.returncode is None and backend.io_lock.locked()
+        assert not inference.done()
+        if finishes:
+            assert await asyncio.wait_for(asyncio.shield(inference), 1) == 'ok'
+            assert await backend.healthy()
+    finally:
+        with contextlib.suppress(ProcessLookupError):
+            backend.process.kill()
+        await backend.process.wait()
+        await asyncio.gather(inference, return_exceptions=True)
+        assert backend.exchange_started is None
+
+
+@pytest.mark.parametrize('boundary', ['status', 'delivery'])
+@pytest.mark.parametrize('same_owner', [False, True])
+async def test_stale_acquire_cannot_corrupt_next_delivered_session(managed, monkeypatch, boundary, same_owner):
+    owner = str(uuid4())
+    acquired = await managed.acquire(owner, 'sensevoice', 'zh')
+    entered, finish = asyncio.Event(), asyncio.Event()
+    original = getattr(managed, 'status' if boundary == 'status' else '_acquire')
+
+    async def delayed(*args):
+        if boundary == 'status':
+            entered.set()
+            await finish.wait()
+        result = await original(*args)
+        if boundary == 'delivery':
+            entered.set()
+            await finish.wait()
+        return result
+
+    attribute = 'status' if boundary == 'status' else '_acquire'
+    monkeypatch.setattr(managed, attribute, delayed)
+    retry = asyncio.create_task(managed.acquire(owner, 'sensevoice', 'zh'))
+    try:
+        await asyncio.wait_for(entered.wait(), 1)
+        await managed.release(owner, acquired['token'])
+        monkeypatch.setattr(managed, attribute, original)
+        next_owner = owner if same_owner else str(uuid4())
+        next_session = await managed.acquire(next_owner, 'sensevoice', 'zh')
+        backend = managed.backend
+        finish.set()
+        with pytest.raises(DomainError, match='invalid_managed_session'):
+            await retry
+        assert managed.delivered_token == next_session['token']
+
+        async def unavailable(*args):
+            raise OSError('status probe failed')
+
+        monkeypatch.setattr(managed, 'status', unavailable)
+        with pytest.raises(OSError, match='status probe failed'):
+            await managed.acquire(next_owner, 'sensevoice', 'zh')
+        assert managed.backend is backend and not backend.stopped.is_set()
+        assert await managed.recognize(next_owner, next_session['token'], 'zh', b'\0\0') == 'sensevoice:zh'
+    finally:
+        finish.set()
+        await asyncio.gather(retry, return_exceptions=True)

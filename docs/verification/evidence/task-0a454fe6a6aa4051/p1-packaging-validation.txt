@@ -1,0 +1,20 @@
+本次只修改三个授权文件；未操作板、未运行全量pytest、未提交或推送。
+运行均串行，使用Python 3.12.13；进程均已终止。
+本机systemd259解析器内存对照10000样本，0差异；不增加运行依赖。
+git diff --check、sh -n preinst、两份Python文件ast.parse通过。
+
+PYTHONPATH=src uv run --no-project --isolated --with-requirements tests/requirements-host.txt python -m pytest tests/unit/test_foundation_packaging.py -k 'admin_uid_storage_marker or systemd_environment_file_syntax or parser_copies_remain_identical or stopped_admin_json' -q
+日志：/var/tmp/gateway-mr7-p1-red.log
+结果：28 failed, 10 passed, 184 deselected in 1.71s
+
+PYTHONPATH=src uv run --no-project --isolated --with-requirements tests/requirements-host.txt python -m pytest tests/unit/test_foundation_packaging.py -k 'systemd_environment_file_syntax and (unquoted-cr or quoted-cr)' -q
+日志：/var/tmp/gateway-mr7-p1-cr-red.log
+结果：4 failed, 4 passed, 230 deselected in 0.41s
+
+PYTHONPATH=src uv run --no-project --isolated --with-requirements tests/requirements-host.txt python -m pytest tests/unit/test_foundation_packaging.py -k 'admin_uid_storage_marker or systemd_environment_file or parser_copies_remain_identical or stopped_admin_json' -q
+日志：/var/tmp/gateway-mr7-p1-green.log
+结果：54 passed, 184 deselected in 0.40s
+
+PYTHONPATH=src uv run --no-project --isolated --with-requirements tests/requirements-host.txt python -m pytest tests/unit/test_foundation_packaging.py tests/unit/test_device_lifecycle.py -q
+日志：/var/tmp/gateway-mr7-p1-focused.log
+结果：313 passed, 1 warning, 83 subtests passed in 3.68s

@@ -2,6 +2,7 @@
 """在平台独占租约内运行的 root 验收；备份永不自动删除。"""
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import base64
 import errno
 import fcntl
@@ -22,6 +23,7 @@ import signal
 import stat
 import subprocess
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -127,12 +129,12 @@ def credential_key(path):
     return keys[0]
 
 
-def request(path, key='', payload=None, content_type='application/json', timeout=10):
+def request(path, key='', payload=None, content_type='application/json', timeout=10, port=18790):
     headers = {'Content-Type': content_type}
     if key:
         headers['X-API-Key'] = key
     body = json.dumps(payload).encode() if isinstance(payload, dict) else payload
-    req = urllib.request.Request('http://127.0.0.1:18790' + path, body, headers)
+    req = urllib.request.Request(f'http://127.0.0.1:{port}' + path, body, headers)
     # 永远绕过主机代理，凭据只发往固定的 loopback URL。
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     try:
@@ -254,6 +256,7 @@ class Lifecycle:
         self.old_version = ''
         self.key = secrets.token_urlsafe(32)
         self.original_contract = None
+        self.original_uids = {}
         self.protected_before = None
         self.protected_after = None
         self.intent_before = None
@@ -470,6 +473,12 @@ print(json.dumps([str(Path(getattr(settings, domain).storage.db_path).expanduser
             require(self.services[UNITS[0]]['active'] == 'active',
                     'original gateway must be active for live upgrade verification')
             self.original_contract = self.service_contract()
+            for unit in UNITS:
+                pid = int(run('systemctl', 'show', '-p', 'MainPID', '--value', unit).stdout)
+                if pid:
+                    uid = re.search(r'^Uid:\s+(\d+)\s+(\d+)', Path(f'/proc/{pid}/status').read_text(), re.M)
+                    require(uid is not None, 'cannot inspect original service identity')
+                    self.original_uids[unit] = [int(uid[1]), int(uid[2])]
             self.checked('original-listener-auth-contract-snapshotted')
         databases = self.legacy_databases() if self.old_version else []
         # 预检已完成；停服本身也可能部分成功，必须先登记恢复责任。
@@ -513,11 +522,17 @@ print(json.dumps([str(Path(getattr(settings, domain).storage.db_path).expanduser
         return data
 
     def check_services(self):
+        legacy_root = False
         for unit in UNITS:
             pid = int(run('systemctl', 'show', '-p', 'MainPID', '--value', unit).stdout.strip())
             status = Path(f'/proc/{pid}/status').read_text()
             ids = re.search(r'^Uid:\s+(\d+)\s+(\d+)', status, re.M)
-            require(ids and int(ids[1]) != 0 and int(ids[2]) != 0, 'gateway runs as root')
+            require(ids is not None, 'cannot inspect service identity')
+            current_ids = [int(ids[1]), int(ids[2])]
+            if 0 in current_ids:
+                require(self.old_version and self.original_uids.get(unit) == current_ids,
+                        'gateway runs as root without an original root baseline')
+                legacy_root = True
         current = self.service_contract()
         self.health()
         if self.original_contract is not None:
@@ -535,7 +550,7 @@ print(json.dumps([str(Path(getattr(settings, domain).storage.db_path).expanduser
                                 {'model_id': 'lifecycle-absent-model'})
             require(status == 404, 'packaged key must reach unknown-model handler with 404')
             self.checked('packaged-credentials-authentication')
-        self.checked('nonroot-eight-domain-health')
+        self.checked('legacy-root-identity-preserved' if legacy_root else 'nonroot-eight-domain-health')
 
     def service_contract(self):
         sockets = run('ss', '-ltnH').stdout.splitlines()
@@ -768,6 +783,7 @@ with tempfile.TemporaryDirectory(prefix='lifecycle-write-', dir=data) as tempora
                 'managed shared lock ownership or modes mismatch')
         # 无 token 时只允许精确 owner/model 重试找回；绝不据 API 故障推断资源释放。
         token = None
+        already_released = False
         acquire_body = {'owner': owner, 'model': model, 'language': language}
         try:
             try:
@@ -780,6 +796,8 @@ with tempfile.TemporaryDirectory(prefix='lifecycle-write-', dir=data) as tempora
                     and acquired.get('model') == model and acquired.get('languages') == language.split(',')
                     and acquired.get('resource_state') == 'owned',
                     'managed acquisition identity failed')
+            require(self.health()['domains']['asr'].get('ready') is True,
+                    'managed healthy backend missing from global health')
             for invalid_owner, invalid_token in ((str(uuid4()), token), (owner, 'invalid-token')):
                 code, _ = request(endpoint + 'release', self.key,
                                   {'owner': invalid_owner, 'token': invalid_token})
@@ -810,12 +828,15 @@ with tempfile.TemporaryDirectory(prefix='lifecycle-write-', dir=data) as tempora
                              content_type='multipart/form-data; boundary=' + boundary, timeout=180)
                 require(isinstance(result.get('text'), str) and case['expect_text'] in result['text'],
                         'managed real speech transcript mismatch')
+            if model == 'qwen3_asr_0.6b':
+                self.stalled_managed_release(owner, token, bytes(body), boundary, audio)
+                already_released = True
         finally:
             if token is None:
                 self.managed_evidence['models'].append({
                     'model': model, 'result': 'failed', 'reason': 'session_token_unavailable',
                     'resource_release': 'unconfirmed'})
-            if token:
+            if token and not already_released:
                 released = api(endpoint + 'release', self.key, {'owner': owner, 'token': token}, timeout=180)
                 require(released.get('released') is True, 'managed release acknowledgement failed')
                 with lock.open('r+b') as stream:
@@ -826,6 +847,109 @@ with tempfile.TemporaryDirectory(prefix='lifecycle-write-', dir=data) as tempora
         self.managed_evidence['models'].append({'model': model, 'language': language,
                                                'audio_sha256': hashlib.sha256(audio).hexdigest(),
                                                'instance_id': before['instance_id'], 'result': 'ok'})
+
+    def stalled_managed_release(self, owner, token, body, boundary, audio):
+        parent = int(run('systemctl', 'show', '-p', 'MainPID', '--value', UNITS[0]).stdout)
+        children = run('ps', '-o', 'pid=', '--ppid', str(parent)).stdout.split()
+        engines = [int(pid) for pid in children
+                   if b'qwen3-asr' in Path(f'/proc/{pid}/cmdline').read_bytes().split(b'\0')]
+        require(len(engines) == 1, 'cannot identify owned Qwen3 child')
+        pid = engines[0]
+        args = Path(f'/proc/{pid}/cmdline').read_bytes().decode().split('\0')
+        port = int(args[args.index('--port') + 1])
+        require(not self.slot_processing(port), 'Qwen3 slot was busy before the test request')
+        with wave.open(io.BytesIO(audio), 'rb') as source:
+            frames = source.readframes(source.getnframes())
+            repeats = max(1, math.ceil(30 * source.getframerate() / source.getnframes()))
+            output = io.BytesIO()
+            with wave.open(output, 'wb') as target:
+                target.setparams(source.getparams())
+                target.writeframes(frames * repeats)
+        body = body.replace(audio, output.getvalue(), 1)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(request, '/v1/asr/managed/recognize', self.key, body,
+                                 'multipart/form-data; boundary=' + boundary, 90)
+            try:
+                self.stop_in_processing(pid, port, future)
+                with ENGINE_LOCK.open('r+b') as stream:
+                    try:
+                        fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    except BlockingIOError:
+                        pass
+                    else:
+                        raise CheckFailed('stalled managed engine lost shared lock')
+                stop_observer, observer_ready = threading.Event(), threading.Event()
+                observations, observation_errors = [], []
+                def observe_lock():
+                    try:
+                        with ENGINE_LOCK.open('r+b') as stream:
+                            while not stop_observer.is_set():
+                                if not Path(f'/proc/{pid}').exists():
+                                    observations.append('exited')
+                                    return
+                                try:
+                                    fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                                except BlockingIOError:
+                                    observations.append('alive_locked')
+                                else:
+                                    if Path(f'/proc/{pid}').exists():
+                                        raise CheckFailed('shared lock released before managed engine exited')
+                                    fcntl.flock(stream, fcntl.LOCK_UN)
+                                observer_ready.set()
+                                stop_observer.wait(.005)
+                    except Exception as exc:
+                        observation_errors.append(exc)
+                    finally:
+                        observer_ready.set()
+                observer = threading.Thread(target=observe_lock)
+                observer.start()
+                try:
+                    require(observer_ready.wait(2), 'release lock observer did not start')
+                    time.sleep(3)
+                    require(not future.done(), 'stalled inference unexpectedly returned')
+                    health = self.health()
+                    require(health['status'] == 'degraded' and not health['domains']['asr']['ready'],
+                            'stopped managed engine was hidden by global health')
+                    started = time.monotonic()
+                    released = api('/v1/asr/managed/release', self.key,
+                                   {'owner': owner, 'token': token}, timeout=60)
+                finally:
+                    stop_observer.set()
+                    observer.join(timeout=3)
+                require(not observer.is_alive() and not observation_errors
+                        and 'alive_locked' in observations, 'release lock observation failed')
+                require(released.get('released') is True and time.monotonic() - started < 60,
+                        'stalled inference release exceeded bound')
+                require(not Path(f'/proc/{pid}').exists(), 'managed engine still exists after release')
+                with ENGINE_LOCK.open('r+b') as stream:
+                    fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                require(self.health()['domains']['asr']['state'] == 'idle',
+                        'released managed engine did not return to lazy idle')
+                self.checked('mr7-stalled-engine-health-release-real-process')
+                self.managed_evidence.setdefault('inference_phase', 'verified_slot_transition')
+                self.managed_evidence['release_lock_samples'] = observations.count('alive_locked')
+            finally:
+                if Path(f'/proc/{pid}').exists():
+                    os.kill(pid, signal.SIGCONT)
+                try:
+                    future.result(timeout=90)
+                except (OSError, TimeoutError):
+                    pass
+
+    def slot_processing(self, port):
+        slots = api('/slots', port=port, timeout=2)
+        require(isinstance(slots, list) and len(slots) == 1 and slots[0].get('id') == 0
+                and isinstance(slots[0].get('is_processing'), bool), 'invalid owned Qwen3 slot state')
+        return slots[0]['is_processing']
+
+    def stop_in_processing(self, pid, port, future):
+        deadline = time.monotonic() + 10
+        while not self.slot_processing(port):
+            require(not future.done() and time.monotonic() < deadline,
+                    'cannot correlate the test request with Qwen3 slot processing')
+            time.sleep(.02)
+        require(not future.done(), 'Qwen3 request finished before fault injection')
+        os.kill(pid, signal.SIGSTOP)
 
     def preserved(self, purge=False):
         for path, digest in self.admin_hashes.items():
@@ -936,6 +1060,74 @@ with tempfile.TemporaryDirectory(prefix='lifecycle-write-', dir=data) as tempora
         run('dpkg', '--force-depends', '--purge', PACKAGE, timeout=180)
         self.preserved(purge=True)
         self.checked('reinstall-purge-preserves-dropin-and-data')
+        self.check_admin_unit_upgrade()
+
+    def check_admin_unit_upgrade(self):
+        if not self.old_version:
+            return
+        # 回到精确旧包后构造管理员 unit，外层 finally 仍负责恢复最初板端基线。
+        self.restore()
+        self.restored = False
+        self.stop_services()
+        legacy = APP / 'configs/base.yaml'
+        require(legacy.is_file() and not legacy.is_symlink(), 'legacy packaged config missing for admin upgrade')
+        account = pwd.getpwnam('bianbu')
+        home = DATA / "audit-admin's-home"
+        home.mkdir(parents=True, exist_ok=True)
+        os.chown(home, account.pw_uid, account.pw_gid)
+        environment = DATA / 'audit-admin.env'
+        environment.write_text(
+            f'HOME={home}\nSPACEMIT_AI_GATEWAY_CONFIG={legacy}\n'
+            'SPACEMIT_AI_GATEWAY_LLM__STORAGE__MODELS_DIR=~/models/llm\n'
+            f'SPACEMIT_AI_GATEWAY_VAD__MODEL_DIR={MODEL.parent}\n'
+            'SPACEMIT_AI_GATEWAY_APP__HOST=127.0.0.1\n'
+            'SPACEMIT_AI_GATEWAY_AUTH__ENABLED=true\n'
+            'SPACEMIT_AI_GATEWAY_AUTH__IP_WHITELIST=[]\n'
+            'SPACEMIT_AI_GATEWAY_AUTH__IP_WHITELIST_FILE=\n'
+            'SPACEMIT_AI_GATEWAY_AUTH__API_KEYS=' + json.dumps([self.key]) + '\n')
+        environment.chmod(0o644)
+        unit = Path('/etc/systemd/system/' + UNITS[0])
+        unit.write_text('[Unit]\nDescription=Gateway administrator upgrade acceptance\n'
+                        '[Service]\nUser=bianbu\nGroup=bianbu\nSupplementaryGroups=bibit-asr\n'
+                        f'WorkingDirectory={APP}\nEnvironmentFile={environment}\n'
+                        f'ExecStart={APP}/venv/bin/spacemit-ai-gateway\nRestart=on-failure\n'
+                        '[Install]\nWantedBy=multi-user.target\n')
+        originals = (unit.read_bytes(), environment.read_bytes())
+        # 模拟旧候选已完成固定 UID 迁移，但管理员 HOME 缓存仍未获授权。
+        ETC.mkdir(parents=True, exist_ok=True)
+        (ETC / 'base.yaml').write_bytes(legacy.read_bytes())
+        for marker in ('.legacy-storage-migrated', '.legacy-assets-migrated'):
+            (ETC / marker).touch()
+        run('systemctl', 'daemon-reload')
+        self.install()
+        require((unit.read_bytes(), environment.read_bytes()) == originals,
+                'complete administrator unit or custom environment was rewritten')
+        require(legacy.is_symlink() and legacy.resolve() == ETC / 'base.yaml',
+                'old administrator config path was not restored')
+        readable = run('runuser', '-u', 'bianbu', '--', '/usr/bin/python3', '-c',
+                       'import pathlib,sys; pathlib.Path(sys.argv[1]).open().read(1)', str(legacy), check=False)
+        if readable.returncode:
+            details = readable.stderr + readable.stdout
+            details += run('namei', '-l', str(legacy), check=False).stdout
+            details += run('getfacl', '-p', str(legacy), str(ETC), check=False).stdout
+            details += run('systemctl', 'show', UNITS[0], '-p', 'User,DropInPaths', check=False).stdout
+            raise CheckFailed('administrator config is not readable', details)
+        run('systemctl', 'restart', UNITS[0])
+        wait_for(lambda: api('/healthz'))
+        pid = int(run('systemctl', 'show', '-p', 'MainPID', '--value', UNITS[0]).stdout)
+        values = dict(item.split('=', 1) for item in
+                      Path(f'/proc/{pid}/environ').read_bytes().decode().split('\0') if '=' in item)
+        require(values.get('HOME') == str(home), 'custom HOME lost during stopped service upgrade')
+        probe = ('import json,os; from spacemit_ai_gateway.app.settings import get_settings; '
+                 "print(json.dumps({'home':os.environ['HOME'],"
+                 "'models':str(get_settings().llm.storage.models_path)}))")
+        result = subprocess.run([str(APP / 'venv/bin/python'), '-c', probe], env=values,
+                                cwd=APP, capture_output=True, text=True, timeout=30)
+        require(result.returncode == 0, 'administrator effective settings could not be read')
+        require(json.loads(result.stdout) == {'home': str(home), 'models': str(home / 'models/llm')},
+                'custom model path changed during stopped service upgrade')
+        self.checked('mr7-admin-unit-stopped-environment-upgrade')
+        self.checked('mr7-admin-existing-markers-systemd-environment-upgrade')
 
     def read_storage_acl_journal(self):
         path = ETC / 'legacy-storage-acl.jsonl'

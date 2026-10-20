@@ -1,0 +1,2 @@
+request_id	attempt_id	artifact_id	item	result	owner	note	evidence	event_seq	created_at
+req-cac00e6291394af88246c83d578f171c	att-4f01e6ddc44e491d9b602d5d23a15f66	gateway-b1dfa3d36175	MR7-U3-U7-prearmed-gdb	fail	agent	prearm已收到断点创建确认，但实际算子断点未命中GDB超时；不能声明真实计算停止或U3/U7通过。finally恢复成功，进程/调试器已退出。需定位真实推理调用链，不继续盲选符号	/home/shaominghao/CodeSpace/bibit-workspace/.integration-worktrees/gateway-mr7-audit-fixes/docs/verification/evidence/task-0a454fe6a6aa4051/p1-prearmed-gdb-timeout.json	221730	2026-10-20T11:42:05.889895+00:00
