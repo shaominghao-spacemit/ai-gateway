@@ -1,0 +1,78 @@
+{
+  "observed_at": "2026-10-20T12:04:59.024191+00:00",
+  "scope": "Gateway MR7 audit fixes; local fixes and real compute fault verified; delivery pending",
+  "host_tests": {
+    "passed": 836,
+    "skipped": 33,
+    "runtime": "Python 3.12",
+    "log": "p1-host-regression.txt",
+    "subtests_passed": 83
+  },
+  "python310_tests": {
+    "passed": 836,
+    "skipped": 33,
+    "log": "p1-python310-regression.txt",
+    "subtests_passed": 83
+  },
+  "build_request_id": "req-def4bcb3b64742a4ab55e6d496af65be",
+  "source_digest": "3f38ef09692a28b92c2f919b9ce1927759b54eaf029ca44e1cb542347a5a5cd8",
+  "board_verification": {
+    "request_id": "req-0ce67ce78362469fbeaf3a7ac4a21a9a",
+    "result": "admin_lifecycle_pass",
+    "restored": true,
+    "safe_to_release": true,
+    "board": "K3DEB1",
+    "scope": "new candidate complete administrator lifecycle and real managed fault passed separately"
+  },
+  "delivery": {
+    "task_id": "task-0a454fe6a6aa4051",
+    "commit": "not_executed",
+    "local_main_merge": "not_executed",
+    "push": "not_executed",
+    "verified_mr_head": "c7f5ba5967afdb860b82f68b36f7808283bf9f55",
+    "mr_target_task_id": "task-518f8fe89a974c52"
+  },
+  "build_artifact": "gateway-b1dfa3d36175",
+  "artifact_sha256": "a2079300b1389a4122789bf66f0b00b1121fe87d59536942f04c047382de7acc",
+  "build_state": "completed",
+  "joint_verification": {
+    "request_id": "req-9e22fcc3ea1c4fa0887f9b216f3242bf",
+    "result": "failed",
+    "restored": true,
+    "safe_to_release": true,
+    "reason": "old Voice acceptance helper hardcodes absent libspert.so.0.6.2"
+  },
+  "coordinated_slot": {
+    "request_id": "req-0ce67ce78362469fbeaf3a7ac4a21a9a",
+    "managed_check": "passed_real_weight_pack_breakpoint",
+    "log": "p1-weight-pack-fault-pass.json",
+    "status": "completed",
+    "occupancy": [],
+    "restored": true,
+    "safe_to_release": true,
+    "release_lock_samples": 4925
+  },
+  "independent_review": {
+    "result": "four_P1_fixed_and_rechecked_no_remaining_P0_P1",
+    "gateway_lifecycle": [
+      "cross_generation_delivery_token",
+      "sensevoice_health_pipe_desynchronization"
+    ],
+    "packaging": [
+      "administrator_existing_markers_skip_acl",
+      "systemd_environment_file_shell_parse"
+    ]
+  },
+  "latest_regression_boundary": {
+    "intent_vector_check": "failed_before_fault_on_req4e5f",
+    "restored": true,
+    "occupancy": [],
+    "subsequent_admin_vectors": "all three before/after vectors identical on req-cac00e6291394af88246c83d578f171c; prior failure retained"
+  },
+  "callchain_diagnostic_request": {
+    "request_id": "req-0ce67ce78362469fbeaf3a7ac4a21a9a",
+    "scope": "real Qwen3 thread stack only; not another guessed breakpoint or fault pass",
+    "state": "completed_restored_released",
+    "result": "real_callchain_identified_base_dispatch_is_ret"
+  }
+}

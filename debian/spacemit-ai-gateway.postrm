@@ -22,6 +22,12 @@ PY
               /etc/tmpfiles.d/spacemit-ai-gateway-voice-access.conf
             # migrate 生成的 drop-in 不属于 dpkg 文件清单；purge 不清掉会让下一次
             # 升级读到已被删除的新配置路径（preinst 报 FileNotFoundError）。
+            /usr/bin/python3 - <<'PYCONFIG'
+from pathlib import Path
+path = Path('/opt/spacemit-ai-gateway/configs/base.yaml')
+if path.is_symlink() and path.readlink() == Path('/etc/spacemit-ai-gateway/base.yaml'):
+    path.unlink()
+PYCONFIG
             rm -f /etc/systemd/system/spacemit-ai-gateway.service.d/00-legacy-runtime.conf \
               /etc/systemd/system/spacemit-ai-gateway-frontend.service.d/00-legacy-runtime.conf \
               /etc/systemd/system/spacemit-ai-gateway-frontend.service.d/legacy-listener.conf

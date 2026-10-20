@@ -1,0 +1,7 @@
+{
+  "snapshot_source_digest": "3f38ef09692a28b92c2f919b9ce1927759b54eaf029ca44e1cb542347a5a5cd8",
+  "snapshot_file_sha256": "dce7d080367aff4f5aae8359191d550d44c95b1f5724d61b3ea8f0439be51db7",
+  "checked_count": 228,
+  "mismatches": [],
+  "scope": "production, packaging, configuration, frontend, scripts and schema"
+}

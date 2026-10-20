@@ -49,3 +49,30 @@
 - 公开证据：docs/verification/evidence/gateway-foundation/；截图 docs/assets/gateway-console-auth-host.png。备份含设备配置与凭据，仅留板端受限目录，不纳入 Git。
 
 历史失败不计通过：req-2a8c62581d734f00bd9874e981077b66 暴露 SDK 静默初始化失败；req-6eff87aa9a9549bf87372cb4b532d3b3 暴露验收脚本将 error 误写为 code。两次均已 restored=true，独立恢复核对无差异。最终通过只绑定上述新产物与请求。
+
+
+## MR !7 审计修复（2026-10-20）
+
+任务 task-0a454fe6a6aa4051，仅修改 Gateway；复用现有 MR 源分支，禁止远端 main 直推。
+
+- U1：旧 Qwen3 HTTP 接入允许其配置指定的本机外部监听；托管仍拒绝接管。
+- U2：源码/wheel 安全初始化同一共享锁，保留既有 inode、权限错误明确失败。
+- U3：release 等待在途推理有期限，再终止本方进程组，真实退出后才取消 I/O 和关锁。
+- U4：acquire 未交付令牌且清理失败时内部重试；锁保持占有，shutdown 不无限等待重试任务。
+- U5：完整管理员 unit 使用旧配置路径时补兼容软链；unit 原字节、自选配置均保留。
+- U6：停服升级按有效 EnvironmentFiles 顺序读取 HOME/环境，运行时以 /proc 为准。
+- U7：全局健康纳入托管模型、失败及释放状态，释放后恢复 lazy idle。
+
+每项有宿主回归；U3/U7 增加独占板端真实 Qwen3 SIGSTOP 故障注入。完整 Deb 生命周期及双模型推理重新验收，确认 restored=true 和 safe_to_release 后交付。源码安装涉及不同 UID 时仍需管理员预建共享组/目录，不能靠每用户锁规避互斥。
+
+补充回归：加载后 status 抛异常时同样释放未交付会话；完整管理员 unit 的非 root UID 通过原 ACL 助手只获得兼容配置读权限，并验证 configure 重入不扩大权限。
+
+审计后补充（2026-10-20）：保护 acquire 重试时已交付的会话，成功 dispose 后清除旧清理任务，健康探针跨释放后重读当前状态；SenseVoice 忙时也识别停止/僵尸 worker。安装兼容补充 EnvironmentFiles 通配顺序、数字 UID 与旧配置软链祖先的最小遍历 ACL，并增加实际跨 UID 读取及 purge 行为回归。最终宿主为 762 passed、33 skipped、79 subtests passed；新构建 req-cca9081862b6409ba5c3433dd770b9a0 仍待板端验收。设备 CPU 活动与未返回请求不能证明处于推理阶段，厂商 Qwen3 推理阶段内挂死明确保留 unverified，不因宿主回归通过而关闭该项。
+
+2026-10-20 接续：修复 SenseVoice 运行态无响应误报健康（沿用启动预算，不取消 I/O），补正常慢推理恢复、Python 3.10 TERM/KILL 兼容、slot 阶段故障注入及释放全过程独立 flock 观察。当前宿主 766 项通过；新候选 req-9b4b26a2a2ae4461a3788f5a26d48f4a 待独占板验，未提交/推送，不以旧通过替代。
+
+2026-10-20 最新接续：四项新增 P1 已修复，独立专项复核未确认残留 P0/P1；宿主 Python 3.12/3.10 均 836 passed、33 skipped、83 subtests passed。新产物 gateway-b1dfa3d36175（Deb SHA256 a2079300b1389a4122789bf66f0b00b1121fe87d59536942f04c047382de7acc）已构建；req-200dc7b0037548d4a3be7454ddc93211 正在 K3DEB1 重新验收，仍未提交/更新现有 MR。两个旧联合失败已 restored=true，旧租约 completed/occupancy=[]，失败不计通过。
+
+2026-10-20 11:46 UTC 终态核查：同一新产物完整管理员生命周期再次通过（req-cac00e6291394af88246c83d578f171c），原 Intent 三条向量前后一致；保留此前单次向量失败。提交识别前预布防 GDB 仍未命中选定计算符号并超时，U3/U7 真机故障未通过。finally 恢复完成，平台已 completed、occupancy=[]、safe_to_release=true、cleanup_errors=[]。先定位真实调用链，不继续盲选符号；新修复未提交或更新 MR。证据与最新状态见 task-0a454fe6a6aa4051 的 pending 条目和 status.json。
+
+2026-10-20 12:05 UTC 收口：真实线程栈和反汇编确认旧基类派发入口只有 ret，改用实际在线权重打包入口同步断点；同 Deb 真实故障验证通过，4925 次 flock 观察未提前解锁，health 降级、release 有界、进程退出后锁可取并回到 idle。req-0ce67ce78362469fbeaf3a7ac4a21a9a 已 restored=true、completed、occupancy=[]、safe_to_release=true；完整管理员生命周期也通过。双版本宿主全量各836通过、33跳过、83子测试通过。生产不变；task-518f8fe89a974c52 接手现有 MR 分支交付，不改本地或远端 main。

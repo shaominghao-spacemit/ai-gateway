@@ -69,8 +69,9 @@ Gateway 同进程多个 AsrService 共用同一个全局 FD，保持到进程退
 
 engine FD 由 Gateway 在受管 backend 全寿命持有，通过 `pass_fds` 传入子进程。
 父进程退出而推理子进程仍活着时，继承 FD 继续占锁。
-release 先阻止新推理，等 shield 保护的全部真实推理完成，再终止并等待本方进程组退出，
-最后 close 父进程 FD 并回执；shutdown 失败保留锁、归属和 token，允许本人重试。
+release 先阻止新推理，最多等待 `shutdown_timeout` 秒收拢 shield 保护的推理，
+再终止并等待本方进程组退出，取消残留 I/O，最后 close 父进程 FD 并回执；
+shutdown 失败保留锁、归属和 token，允许本人重试。
 HTTP 断连、超时、健康失败、端口失联都不能证明资源释放。无 token 超时不自动解锁活模型。
 
 acquire 加载任务在 HTTP 取消后继续收尾，随后只清理该次未交付的精确 session；
@@ -79,7 +80,8 @@ acquire 加载任务在 HTTP 取消后继续收尾，随后只清理该次未交
 相同 owner/model 可以重试 acquire，返回原 token，不重载模型、不接管其他 owner。
 客户端应保留同一实例 UUID 完成恢复并 release。另一个 UUID 即使持同一 API key 也不能释放。
 
-旧生产 ASR 首次实际加载也强制竞争同一 engine 锁，即使 managed 未启用；缺锁目录、权限或锁忙明确失败。
+旧生产 ASR 首次实际加载也强制竞争同一 engine 锁，即使 managed 未启用；
+目录不存在时尝试安全初始化，权限不足、不安全路径或锁忙明确失败。
 SDK 资源回收无法证明时，即使旧 unload/shutdown 或加载失败也保留锁至进程退出。
 本进程曾使用旧 ASR 后，managed 保守报 `legacy_asr_loaded`，需重启 Gateway 后才能启用托管。
 测试构造器注入已存在 backend 可豁免首次生产加载锁；生产 lifespan 使用空 backends，不走该豁免。
@@ -303,7 +305,25 @@ HuggingFace 缓存、真实 chroot 完整 deb 升级及固定账户板端原模�
 
 
 生命周期验收区分升级与新装：已安装且运行中的旧 Gateway 在停服前记录 18790/8326
-监听地址及无 key 请求的鉴权结果；安装后必须保持一致，仍检查非 root 和八域健康。
+监听地址及无 key 请求的鉴权结果；安装后必须保持一致，并检查八域健康；新装禁止 root，旧装仅在停服前取得的真实 UID 与升级后 UID 完全一致时允许保留原 root 身份。
 没有原包的新装才要求 loopback、默认401及包生成的 key 可用。原服务未运行或无法取得
 有效基线时，在修改服务/文件前失败，不把缺失证据当成升级通过。该基础比较不替代
 旧 Intent 的真实 Embedding/LLM 推理。凭据解析同时支持 systemd 单引号和双引号 JSON。
+
+
+## 安装与故障回收边界
+
+源码及 wheel 启动会初始化 `asr.managed.lock_path`（默认 `/run/lock/bibit-asr/engine.lock`）；既有锁不删除、不截断、不换 inode。新文件为 0660，目录为 2775；无法创建或存在不安全路径时拒绝 ASR 加载。不同 UID 协作仍由管理员创建 `bibit-asr` 共享组并分配目录/文件权限，Deb 已通过 tmpfiles 完成这一步。关闭 managed 也保留旧 ASR 的互斥。旧 `qwen3-asr` 可连接其 endpoint 指定的外部 HTTP 引擎，托管不会接管或杀死该服务。
+
+release 最多先等待 `shutdown_timeout` 秒收拢推理，再按 TERM/KILL 流程关闭本方进程组；响应时间还包含进程退出等待。确认退出后才取消残留 I/O 并关闭锁 FD。清理失败保留资源占用；尚未交付 token 的 acquire 会后台重试清理，退出服务时停止重试并执行最终释放。全局 `/healthz` 的 ASR 状态包含托管模型健康及失败/释放状态，模型未加载时仍为 idle。
+
+升级时停服服务读取 systemd 有效 EnvironmentFiles，运行服务以 `/proc/<pid>/environ` 为准。完整管理员 unit 指向旧包内配置时，迁移保留 unit，并为被 unpack 删除的旧路径建立指向 `/etc/spacemit-ai-gateway/base.yaml` 的兼容软链；非 root 自定义服务 UID 通过现有 ACL 机制取得新配置的读取权限和其有效模型/状态目录的存储权限，祖先仅可遍历，不开放其他用户；自选 YAML 不覆盖，purge 只删除精确匹配的兼容软链。
+
+SenseVoice 正在推理时仍检查 worker 进程状态；单次无响应超过 `asr.managed.startup_timeout` 的既有预算时健康降级，但不取消推理或提前解锁。正常慢请求完成后健康可恢复；未完成请求仍由 release 按 TERM/KILL 回收。该窗口表示可用性预算，不证明 SDK 内部每个运算阶段都有进展。
+
+### MR !7 审计后的生命周期约束
+
+- acquire 返回与交付标记均核对同一 owner/token，旧请求跨代返回必须失败，不能覆盖新会话令牌。
+- SenseVoice health 超时只停止探针等待，已发出的管道交换继续持锁消费迟到回复；release 在进程组退出后收集交换任务。
+- 完整管理员 unit 的非 root UID 使用独立存储授权迁移标记，旧固定服务 UID 标记不会跳过补授权；EnvironmentFile 按 systemd 语法读取，不能当 shell 解引号。
+- 故障取证不能用 CPU 忙或请求未返回替代推理阶段。厂商 HTTP slot 接口无响应时，只能用已拥有引擎的真实算子派发入口及停止证据；此证据不声明算术指令 PC。

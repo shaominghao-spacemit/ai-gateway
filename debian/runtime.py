@@ -192,18 +192,73 @@ def preserve(source, destination):
         private_write(destination, source.read_text())
 
 
-def environment_values(path):
-    # EnvironmentFile 不是 shell：不执行命令，不展开变量，保留管理员未修改的行。
+def parse_environment(text):
+    # preinst 在 unpack 前不能导入此文件；两份解析器由回归检查一致性。
+    if any(char in '\0\ufeff' or 0xfdd0 <= ord(char) <= 0xfdef
+           or ord(char) & 0xffff in (0xfffe, 0xffff) for char in text):
+        raise ValueError('Invalid character in systemd EnvironmentFile')
     result = {}
-    if path.is_file():
-        for line in path.read_text().splitlines():
-            if not line.strip() or line.lstrip().startswith(("#", ";")):
-                continue
-            key, separator, value = line.partition("=")
-            if separator:
-                parts = shlex.split(value, comments=False)
-                result[key.strip()] = " ".join(parts)
+    index = 0
+    while index < len(text):
+        newline = re.search(r'[\r\n]', text[index:])
+        line_end = index + newline.start() if newline else len(text)
+        assignment = re.match(r'[ \t]*([A-Za-z_][A-Za-z0-9_]*)[ \t]*=', text[index:line_end])
+        if assignment is None:
+            index = line_end + 1
+            continue
+        key = assignment[1]
+        index += assignment.end()
+        state = 'start'
+        value = []
+        end = 0
+        while index < len(text):
+            char = text[index]
+            index += 1
+            if state == 'start':
+                if char in ' \t':
+                    continue
+                if char in '\r\n':
+                    break
+                if char in "'\"":
+                    state = char
+                    continue
+                state = 'plain'
+            if state == 'plain':
+                if char in '\r\n':
+                    break
+                if char == '\\':
+                    if index < len(text):
+                        following = text[index]
+                        index += 1
+                        if following not in '\r\n':
+                            value.append(following)
+                        end = len(value)
+                    continue
+                value.append(char)
+                if char not in ' \t\r':
+                    end = len(value)
+            else:
+                if char == state:
+                    state = 'start'
+                    continue
+                if state == '"' and char == '\\':
+                    if index == len(text):
+                        continue
+                    char = text[index]
+                    index += 1
+                    if char == '\n':
+                        continue
+                    if char not in '\\"`$':
+                        value.append('\\')
+                value.append(char)
+                end = len(value)
+        result[key] = ''.join(value[:end])
     return result
+
+
+def environment_values(path):
+    # 直接解码，保留多行引号里的 CR；不展开变量或执行命令。
+    return parse_environment(path.read_bytes().decode('utf-8')) if path.is_file() else {}
 
 
 def env_line(key, value):
@@ -387,11 +442,16 @@ def validate_storage_paths(root, paths):
     return checked
 
 
-def grant_storage_access(root, paths, uid=None):
+def grant_storage_access(root, paths, uid=None, traverse=()):
     """模型/状态目录原地复用；父目录仅 x，存储目录允许 SQLite WAL/下载更新。"""
-    if not paths:
+    if not paths and not traverse:
         return
     checked = validate_storage_paths(root, paths)
+    # 兼容配置软链的源目录只授予遍历，不递归授予目录或兄弟文件的读取权限。
+    traversal = [checked_storage_path(root, value) for value in traverse]
+    for directory in traversal:
+        if not directory.is_dir():
+            raise RuntimeError(f"Traversal ACL requires an existing directory: {directory}")
     uid = pwd.getpwnam("spacemit-ai-gateway").pw_uid if uid is None else uid
     if uid == 0:
         raise RuntimeError("Gateway storage ACL requires a non-root service account")
@@ -405,6 +465,10 @@ def grant_storage_access(root, paths, uid=None):
         private_write(log, history)
     journal = (log, {(entry["path"], entry["attribute"])
                      for entry in map(json.loads, history.splitlines())})
+    for directory in traversal:
+        for parent in [*reversed(directory.parents), directory]:
+            if parent.is_relative_to(root):
+                _acl_grant(parent, uid, 1, False, journal)
     for resolved, writable in checked:
         for parent in reversed(resolved.parents):
             if parent == root.parent or not parent.is_relative_to(root):
@@ -451,6 +515,10 @@ def migrate_legacy(root=Path("/")):
     pattern = re.compile(r"\[Service\]\nUser=([^\n]+)\nGroup=[^\n]+\nEnvironment=HOME=([^\n]+)\nUMask=0022\n")
     context_path = etc / "legacy-context.json"
     context = json.loads(context_path.read_text()) if context_path.exists() else {"home": "/root", "environment": {}}
+    administrator_unit = root / "etc/systemd/system/spacemit-ai-gateway.service"
+    user = context.get("user") or "root"
+    administrator_uid = (int(user) if user.isdigit() else pwd.getpwnam(user).pw_uid) if administrator_unit.is_file() else 0
+    administrator_storage_marker = etc / f".legacy-admin-storage-{administrator_uid}"
     dropin = root / "etc/systemd/system/spacemit-ai-gateway.service.d/runtime-user.conf"
     old_dropin = dropin if dropin.is_file() else etc / "spacemit-ai-gateway-legacy-runtime-user.conf"
     if not context_path.exists() and old_dropin.is_file():
@@ -470,7 +538,9 @@ def migrate_legacy(root=Path("/")):
     inherited = {key: value for key, value in context.get("environment", {}).items()
                  if key.startswith("SPACEMIT_AI_GATEWAY_") and key != "SPACEMIT_AI_GATEWAY_CONFIG"}
     current = etc / "base.yaml"
-    if (not storage_marker.exists() or not assets_marker.exists()) and source.is_file():
+    # 固定服务 UID 的旧标记不能证明完整管理员 unit 的 UID 已得到存储权限。
+    if (not storage_marker.exists() or not assets_marker.exists()
+            or (administrator_uid and not administrator_storage_marker.exists())) and source.is_file():
         import yaml
         preserve(legacy if legacy.is_file() else source, backup)
         default = root / "usr/share/spacemit-ai-gateway/base.yaml"
@@ -581,7 +651,10 @@ def migrate_legacy(root=Path("/")):
         paths.extend(registered_model_paths(root, databases.values()))
         effective_home = effective.get("HOME", home)
         paths.extend(legacy_default_assets(effective_home, effective.get("XDG_CACHE_HOME", "~/.cache")))
-        grant_storage_access(root, paths)
+        if administrator_uid:
+            grant_storage_access(root, paths, uid=administrator_uid)
+        else:
+            grant_storage_access(root, paths)
         if replace_config:
             private_write(current, rendered)
             # YAML 可能包含旧 API key，仅 root 和固定服务组读取。
@@ -601,6 +674,8 @@ def migrate_legacy(root=Path("/")):
         marker.touch()
         storage_marker.touch()
         assets_marker.touch()
+        if administrator_uid:
+            administrator_storage_marker.touch()
     elif not source.is_file() and not credentials.exists():
         private_write(credentials, "SPACEMIT_AI_GATEWAY_AUTH__ENABLED=true\n" +
                       env_line("SPACEMIT_AI_GATEWAY_AUTH__API_KEYS", json.dumps([secrets.token_urlsafe(32)])))
@@ -626,6 +701,19 @@ def migrate_legacy(root=Path("/")):
                         "/opt/spacemit-ai-gateway/frontend/serve.py 8326 --bind ::\n"
                     )
                 private_write(path, content)
+        if (name == "spacemit-ai-gateway" and legacy_install and unit.is_file()
+                and context.get("environment", {}).get("SPACEMIT_AI_GATEWAY_CONFIG")
+                == "/opt/spacemit-ai-gateway/configs/base.yaml"):
+            # 完整管理员 unit 及 EnvironmentFile 保持原样，兼容 dpkg 已移除的旧配置路径。
+            if not legacy.exists() and not legacy.is_symlink():
+                legacy.parent.mkdir(parents=True, exist_ok=True)
+                legacy.symlink_to("/etc/spacemit-ai-gateway/base.yaml")
+            if legacy.is_symlink() and legacy.readlink() == Path("/etc/spacemit-ai-gateway/base.yaml"):
+                user = context.get("user") or "root"
+                uid = int(user) if user.isdigit() else pwd.getpwnam(user).pw_uid
+                if uid != 0:
+                    grant_storage_access(root, [("/etc/spacemit-ai-gateway/base.yaml", False)], uid=uid,
+                                         traverse=["/opt/spacemit-ai-gateway/configs"])
         path = root / f"etc/systemd/system/{name}.service.d/runtime-user.conf"
         if path.is_file() and pattern.fullmatch(path.read_text()):
             preserve(path, etc / f"{name}-legacy-runtime-user.conf")

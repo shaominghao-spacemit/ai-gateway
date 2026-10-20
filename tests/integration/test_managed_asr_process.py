@@ -64,6 +64,7 @@ async def test_real_process_parameters_inference_and_cleanup(engine):
     with pytest.raises(BlockingIOError):
         take_lock(managed.config.managed.lock_path)
     args = json.loads((tmp_path / 'args.json').read_text())
+    assert '--slots' in args
     for flag, value in [('--media-backend', 'smt'), ('-t', '2'), ('-tb', '2'), ('-c', '4096'), ('-np', '1')]:
         assert args[args.index(flag) + 1] == value
     cfg = json.loads((runtime / 'config.json').read_text())
@@ -278,3 +279,111 @@ def test_affinity_guard_only_pins_a100_threads(monkeypatch):
     monkeypatch.setattr(os, 'sched_setaffinity', lambda tid, target: calls.append((tid, target)))
     backend._pin_a100_threads({8, 9})
     assert calls == [(1, {8, 9}), (5, {8, 9})]
+
+
+async def test_release_terminates_stalled_inference_before_unlock(engine, monkeypatch):
+    import contextlib
+    managed, tmp_path = engine
+    monkeypatch.setenv('TEST_LLAMA_DELAY', '60')
+    owner = str(uuid4())
+    acquired = await managed.acquire(owner, 'qwen3_asr_0.6b', 'zh')
+    backend = managed.backend
+    pid = backend.pid
+    request = asyncio.create_task(managed.recognize(owner, acquired['token'], 'zh', b'\0\0'))
+    release = None
+    shutdown_entered = asyncio.Event()
+    allow_shutdown = asyncio.Event()
+    shutdown = backend.shutdown
+
+    async def shutdown_with_barrier():
+        shutdown_entered.set()
+        await allow_shutdown.wait()
+        await shutdown()
+
+    monkeypatch.setattr(backend, 'shutdown', shutdown_with_barrier)
+
+    async def wait_for_payload():
+        while not (tmp_path / 'payload.json').exists():
+            await asyncio.sleep(.01)
+
+    try:
+        await asyncio.wait_for(wait_for_payload(), 5)
+        os.kill(pid, signal.SIGSTOP)
+        release = asyncio.create_task(managed.release(owner, acquired['token']))
+        await asyncio.wait_for(shutdown_entered.wait(), 2)
+        assert backend.process.returncode is None and Path(f'/proc/{pid}').exists()
+        with pytest.raises(BlockingIOError):
+            take_lock(managed.config.managed.lock_path)
+        allow_shutdown.set()
+        assert await asyncio.wait_for(asyncio.shield(release), 2) == {'released': True}
+        assert not Path(f'/proc/{pid}').exists() and not managed.active
+        fd = take_lock(managed.config.managed.lock_path)
+        os.close(fd)
+    finally:
+        allow_shutdown.set()
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(pid, signal.SIGKILL)
+        await asyncio.gather(request, return_exceptions=True)
+        if release:
+            await asyncio.wait_for(release, 5)
+
+
+@pytest.mark.parametrize('outcome', ['reply', 'exit', 'hang'])
+@pytest.mark.parametrize('interruption', ['timeout', 'cancel'])
+async def test_sensevoice_health_timeout_preserves_pipe_and_shutdown_collects_task(outcome, interruption):
+    from spacemit_ai_gateway.domains.asr.managed_backend import ManagedBackend
+    config = AsrConfig(managed={'shutdown_timeout': .1})
+    backend = ManagedBackend(config, 'sensevoice', ['auto'], -1)
+    source = ('import sys,json,time\n'
+              'for line in sys.stdin:\n'
+              ' request=json.loads(line)\n'
+              ' if request["op"]=="health":\n'
+              f'  time.sleep({60 if outcome == "hang" else 2.3})\n'
+              + ('  sys.exit(0)\n' if outcome == 'exit' else '')
+              + ' print(json.dumps({"model":"sensevoice","languages":["auto"]} '
+              'if request["op"]=="health" else {"text":"ok"}),flush=True)\n')
+    backend.process = await asyncio.create_subprocess_exec(
+        sys.executable, '-c', source, start_new_session=True,
+        stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE)
+    process = backend.process
+    backend.identity = ('sensevoice', ['auto'])
+    errors = []
+    loop = asyncio.get_running_loop()
+    previous_handler = loop.get_exception_handler()
+    loop.set_exception_handler(lambda loop, context: errors.append(context))
+    try:
+        if interruption == 'timeout':
+            assert not await backend.healthy()
+        else:
+            probe = asyncio.create_task(backend.healthy())
+            async def sent():
+                while backend.exchange_started is None:
+                    await asyncio.sleep(.001)
+            await asyncio.wait_for(sent(), 1)
+            probe.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await probe
+        assert backend.io_lock.locked()
+        exchange = backend.health_task
+        assert not await backend.healthy()
+        assert backend.health_task is exchange
+        if outcome == 'reply':
+            assert await asyncio.wait_for(backend.recognize(b'\0\0', ['auto']), 4) == 'ok'
+        elif outcome == 'exit':
+            await asyncio.wait_for(process.wait(), 4)
+            await asyncio.sleep(0)
+        await asyncio.wait_for(backend.shutdown(), 1)
+        assert exchange.done()
+        assert process.returncode is not None
+        assert not backend.io_lock.locked()
+        assert backend.health_task is None
+        import gc
+        del exchange
+        gc.collect()
+        await asyncio.sleep(0)
+        assert not errors
+    finally:
+        try:
+            await asyncio.wait_for(backend.shutdown(), 1)
+        finally:
+            loop.set_exception_handler(previous_handler)

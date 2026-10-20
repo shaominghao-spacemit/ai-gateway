@@ -11,6 +11,7 @@ import signal
 import sys
 import tempfile
 import threading
+import time
 from pathlib import Path
 
 import httpx
@@ -32,6 +33,8 @@ class ManagedBackend:
         self.io_lock = asyncio.Lock()
         self.client = None
         self.identity = None
+        self.exchange_started = None
+        self.health_task = None
         self.affinity_error = None
         self._affinity_stop = threading.Event()
         self._affinity_thread = None
@@ -67,7 +70,7 @@ class ManagedBackend:
                     '--host', '127.0.0.1', '--port', str(cfg.port), '--alias', 'qwen3-asr',
                     '-t', str(cfg.threads), '-tb', str(cfg.batch_threads), '-c', str(cfg.ctx_size),
                     '--media-backend', 'smt', '--smt-config-dir', str(runtime),
-                    '--slot-save-path', str(runtime), '--warmup', '-np', '1']
+                    '--slot-save-path', str(runtime), '--slots', '--warmup', '-np', '1']
             # 内部请求不设置读取超时；外部断连后仍等真实推理完成，release 才可回执。
             self.client = httpx.AsyncClient(base_url=self.base_url, timeout=None, trust_env=False)
         self.process = await asyncio.create_subprocess_exec(
@@ -133,21 +136,36 @@ class ManagedBackend:
         async with self.io_lock:
             if not self.process or self.process.returncode is not None:
                 raise AsrBackendUnavailable('sensevoice_worker_exited')
-            self.process.stdin.write((json.dumps(request) + '\n').encode())
-            await self.process.stdin.drain()
-            reply = json.loads(await self.process.stdout.readline())
-            if 'error' in reply:
-                raise AsrBackendUnavailable(reply['error'])
-            return reply
+            self.exchange_started = time.monotonic()
+            try:
+                self.process.stdin.write((json.dumps(request) + '\n').encode())
+                await self.process.stdin.drain()
+                reply = json.loads(await self.process.stdout.readline())
+                if 'error' in reply:
+                    raise AsrBackendUnavailable(reply['error'])
+                return reply
+            finally:
+                self.exchange_started = None
 
     async def healthy(self):
         if not self.process or self.process.returncode is not None or self.affinity_error:
             return False
         try:
             if self.model == 'sensevoice':
+                state = await asyncio.to_thread(psutil.Process(self.pid).status)
+                if state in {psutil.STATUS_STOPPED, psutil.STATUS_TRACING_STOP, psutil.STATUS_ZOMBIE}:
+                    return False
+                if self.health_task is not None and not self.health_task.done():
+                    return False
                 if self.io_lock.locked():
-                    return self.identity == (self.model, self.selected)
-                reply = await asyncio.wait_for(self._exchange({'op': 'health'}), 2)
+                    # 复用启动预算作为 worker 无响应健康窗口，不取消仍持锁的推理。
+                    return (self.identity == (self.model, self.selected)
+                            and self.exchange_started is not None
+                            and time.monotonic() - self.exchange_started < self.config.managed.startup_timeout)
+                # 超时/断连只结束探针等待，已发送交换仍持锁消费回复，避免下一次识别串包。
+                self.health_task = asyncio.create_task(self._exchange({'op': 'health'}))
+                self.health_task.add_done_callback(lambda task: task.exception() if not task.cancelled() else None)
+                reply = await asyncio.wait_for(asyncio.shield(self.health_task), 2)
                 return (reply.get('model'), reply.get('languages')) == (self.model, self.selected)
             # 端口健康不能证明是我们的子进程：核对 socket 归属及精确模型身份。
             connections = await asyncio.to_thread(psutil.Process(self.pid).net_connections, kind='tcp')
@@ -161,7 +179,8 @@ class ManagedBackend:
             return (health.json().get('status') == 'ok'
                     and [m['id'] for m in models.json()['data']] == ['qwen3-asr']
                     and self.process.returncode is None)
-        except (OSError, ValueError, KeyError, TypeError, httpx.HTTPError, psutil.Error, TimeoutError):
+        except (OSError, ValueError, KeyError, TypeError, httpx.HTTPError, psutil.Error,
+                asyncio.TimeoutError, AsrBackendUnavailable):
             return False
 
     async def recognize(self, audio, selected):
@@ -205,7 +224,7 @@ class ManagedBackend:
                     pass
                 try:
                     await asyncio.wait_for(self.process.wait(), self.config.managed.shutdown_timeout)
-                except TimeoutError:
+                except asyncio.TimeoutError:
                     if sig == signal.SIGKILL:
                         raise AsrBackendUnavailable('managed_child_did_not_exit')
                     continue
@@ -217,6 +236,10 @@ class ManagedBackend:
             else:
                 raise AsrBackendUnavailable('managed_process_group_still_alive')
             self.process = None
+        if self.health_task is not None:
+            self.health_task.cancel()
+            await asyncio.gather(self.health_task, return_exceptions=True)
+            self.health_task = None
         self._affinity_stop.set()
         if self._affinity_thread is not None:
             await asyncio.to_thread(self._affinity_thread.join)

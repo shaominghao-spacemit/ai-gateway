@@ -1,0 +1,70 @@
+{
+  "artifact_id": "gateway-526e725f0d98",
+  "attempt_id": "att-1e70e8c451da4527a2868ca0a068994c",
+  "backup": "/home/bianbu/bibit-build/evidence/att-1e70e8c451da4527a2868ca0a068994c/gateway-backup-p_it6fw7",
+  "checks": [
+    "original-listener-auth-contract-snapshotted",
+    "external-model-databases-snapshotted",
+    "preflight-backup-rollback-deb",
+    "postinst-configure-reentry",
+    "original-listener-auth-contract-preserved",
+    "legacy-root-identity-preserved",
+    "r2-program-readonly-data-sqlite-writable",
+    "legacy-intent-original-config-real-llm-embedding-upgrade",
+    "real-vad-load-inference",
+    "administrator-auth-config-environment-dropin-data",
+    "r6-failed-model-degrades-health",
+    "real-vad-load-inference",
+    "r6-real-model-reload-health-recovered",
+    "real-vad-load-inference",
+    "health-failure-kill-auto-recovery",
+    "upgrade-preserves-administrator-state",
+    "remove-preserves-administrator-state",
+    "real-vad-load-inference",
+    "reinstall-purge-preserves-dropin-and-data",
+    "external-model-databases-restored",
+    "external-model-databases-restored",
+    "original-package-files-data-services-restored",
+    "mr7-admin-unit-stopped-environment-upgrade",
+    "external-model-databases-restored",
+    "external-model-databases-restored",
+    "original-package-files-data-services-restored",
+    "protected-package-inventory-unchanged"
+  ],
+  "legacy_intent": {
+    "client_version": "0.1.87",
+    "comparison": {
+      "browser": {
+        "cosine": 1.0,
+        "dimension": 1024,
+        "max_abs_error": 0.0
+      },
+      "question": {
+        "cosine": 1.0,
+        "dimension": 1024,
+        "max_abs_error": 0.0
+      },
+      "version": {
+        "cosine": 1.0,
+        "dimension": 1024,
+        "max_abs_error": 0.0
+      }
+    },
+    "result": "ok",
+    "source_and_configuration_unchanged": true
+  },
+  "log": "/home/bianbu/bibit-build/evidence/att-1e70e8c451da4527a2868ca0a068994c/gateway-backup-p_it6fw7-summary.json",
+  "managed_asr": {
+    "contract": "managed-asr-v1",
+    "models": [],
+    "result": "not_run",
+    "t18": {
+      "reason": "both_models_not_verified",
+      "result": "not_passed"
+    }
+  },
+  "request_id": "req-2a181dca7ab045c2b7191a7acaeea02d",
+  "restored": true,
+  "result": "ok",
+  "sha256": "0c86206bfa0bc33222c08df7638e6cfdac61e296870f79c62f14801bc052904d"
+}

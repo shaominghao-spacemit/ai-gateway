@@ -1,0 +1,52 @@
+{
+  "artifact_id": "gateway-b1dfa3d36175",
+  "attempt_id": "att-68f54dfbe7104c82b1b4db68727283db",
+  "backup": "/home/bianbu/bibit-build/evidence/att-68f54dfbe7104c82b1b4db68727283db/gateway-backup-6w_vnw44",
+  "checks": [
+    "original-listener-auth-contract-snapshotted",
+    "external-model-databases-snapshotted",
+    "preflight-backup-rollback-deb",
+    "postinst-configure-reentry",
+    "original-listener-auth-contract-preserved",
+    "legacy-root-identity-preserved",
+    "r2-program-readonly-data-sqlite-writable",
+    "external-model-databases-restored",
+    "external-model-databases-restored",
+    "original-package-files-data-services-restored",
+    "protected-package-inventory-unchanged"
+  ],
+  "error": "original Intent embedding changed",
+  "legacy_intent": {
+    "result": "failed",
+    "stage": "after"
+  },
+  "log": "/home/bianbu/bibit-build/evidence/att-68f54dfbe7104c82b1b4db68727283db/gateway-backup-6w_vnw44-summary.json",
+  "managed_asr": {
+    "contract": "managed-asr-v1",
+    "models": [],
+    "result": "not_run",
+    "t18": {
+      "reason": "both_models_not_verified",
+      "result": "not_passed"
+    }
+  },
+  "request_id": "req-4e5f3811ee0548e8bda4ad3c5eac7e4a",
+  "restored": true,
+  "result": "failed",
+  "sha256": "a2079300b1389a4122789bf66f0b00b1121fe87d59536942f04c047382de7acc",
+  "numeric_comparison": {
+    "browser": {
+      "cosine": 0.9998941307245021,
+      "max_abs_error": 0.0030933767557144165,
+      "dimension": 1024
+    },
+    "question": {
+      "cosine": 1.0,
+      "max_abs_error": 0.0
+    },
+    "version": {
+      "cosine": 1.0,
+      "max_abs_error": 0.0
+    }
+  }
+}

@@ -1,0 +1,11 @@
+....................................................................... [ 27%]
+.............................................................. [ 51%]
+........................................................................ [ 79%]
+......................................................                   [100%]
+=============================== warnings summary ===============================
+tests/unit/test_foundation_packaging.py::test_installed_auth_precedence_through_http_middleware[legacy]
+  /home/shaominghao/.cache/uv/archive-v0/_spuYIySsJ3icXKOlZR_z/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+259 passed, 1 warning, 83 subtests passed in 4.65s

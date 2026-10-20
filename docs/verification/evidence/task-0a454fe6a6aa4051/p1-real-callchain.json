@@ -1,0 +1,25 @@
+{
+  "request_id": "req-0ce67ce78362469fbeaf3a7ac4a21a9a",
+  "attempt_id": "att-f756edfb2f6e4e658a772b8238c10e49",
+  "scope": "real request stack sample, not fault pass",
+  "gdb_exit": 0,
+  "request_done_at_sample": false,
+  "tracer_after_detach": 0,
+  "private_stack_sha256": "a5995a17646481a4e549e994d093b1f8349ef514a2d21aea4e7784c54e46dcfe",
+  "frames": [
+    "#1  0x0000003eebae73aa in onnxruntime::spacemit::SpineGraphExecutor::Predict(std::unordered_map<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, onnxruntime::spacemit::OnnxTensorData, std::hash<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >, std::equal_to<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >, std::allocator<std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, onnxruntime::spacemit::OnnxTensorData> > > const&) () from /lib/libspacemit_ep.so",
+    "#12 0x0000003f8fdfc29e in onnxruntime::InferenceSession::Run(OrtRunOptions const&, gsl::span<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, 18446744073709551615ul>, gsl::span<OrtValue const, 18446744073709551615ul>, gsl::span<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, 18446744073709551615ul>, std::vector<OrtValue, std::allocator<OrtValue> >*, std::vector<OrtDevice, std::allocator<OrtDevice> > const*) () from /lib/libonnxruntime.so.1",
+    "#13 0x0000003f8fdfd060 in onnxruntime::InferenceSession::Run(OrtRunOptions const&, gsl::span<char const* const, 18446744073709551615ul>, gsl::span<OrtValue const* const, 18446744073709551615ul>, gsl::span<char const* const, 18446744073709551615ul>, gsl::span<OrtValue*, 18446744073709551615ul>) () from /lib/libonnxruntime.so.1",
+    "#0  0x0000003eebb7ae0a in void mlir::speir::spekernel::scalar::spe_pack<4ul, 4ul, 32ul, 8ul, true, false>(void*, long, std::array<long, 2ul> const&, void*, long, std::array<long, 2ul> const&, std::array<long, 2ul> const&, std::array<long, 4ul> const&, void*) () from /lib/libspacemit_ep.so",
+    "#1  0x0000003eebaabad6 in onnxruntime::spacemit::SpineGemmDispatchMMT4D::PackOnlineWeight(onnxruntime::spacemit::SpineComputeContext*, onnxruntime::spacemit::SpineOperatorPackedTensor*) () from /lib/libspacemit_ep.so",
+    "#0  0x0000003eebb7ae0e in void mlir::speir::spekernel::scalar::spe_pack<4ul, 4ul, 32ul, 8ul, true, false>(void*, long, std::array<long, 2ul> const&, void*, long, std::array<long, 2ul> const&, std::array<long, 2ul> const&, std::array<long, 4ul> const&, void*) () from /lib/libspacemit_ep.so",
+    "#1  0x0000003eebaabad6 in onnxruntime::spacemit::SpineGemmDispatchMMT4D::PackOnlineWeight(onnxruntime::spacemit::SpineComputeContext*, onnxruntime::spacemit::SpineOperatorPackedTensor*) () from /lib/libspacemit_ep.so"
+  ],
+  "discarded_symbol": {
+    "name": "SpineComputeDispatch::operator()",
+    "size": 2,
+    "disassembly": "ret",
+    "reason": "base dispatch stub not observed in actual request"
+  },
+  "library_sha256": "4f0c251df521e3d62cf4a04d63178fd69da9fe3821590e0129fe1a5b0da92509"
+}

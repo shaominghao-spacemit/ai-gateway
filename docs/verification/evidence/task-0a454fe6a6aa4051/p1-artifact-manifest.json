@@ -1,0 +1,32 @@
+{
+  "architecture": "riscv64",
+  "artifact_id": "gateway-b1dfa3d36175",
+  "attempt_id": "att-b1dfa3d3617546e78a0976c4ddf019c9",
+  "board_id": "K3DEB1-2",
+  "dependency_digest": "sha256:e3b0c44298fc1c149afbf4c8996fb924",
+  "files": [
+    {
+      "board_id": "K3DEB1-2",
+      "location": "board",
+      "name": "spacemit-ai-gateway.deb",
+      "remote_path": "/home/bianbu/bibit-build/artifacts/gateway-b1dfa3d36175/spacemit-ai-gateway.deb",
+      "sha256": "a2079300b1389a4122789bf66f0b00b1121fe87d59536942f04c047382de7acc",
+      "size": 134607654
+    },
+    {
+      "board_id": "K3DEB1-2",
+      "location": "board",
+      "name": "test-device-lifecycle.py",
+      "remote_path": "/home/bianbu/bibit-build/artifacts/gateway-b1dfa3d36175/test-device-lifecycle.py",
+      "sha256": "eadaa9389a211e41c6ba4a668382403a4d5ed09ad5e77ad57980eb9f80a30d1c",
+      "size": 74812
+    }
+  ],
+  "recipe": "gateway",
+  "schema_version": 1,
+  "source_branch": "fix/gateway-mr7-audit",
+  "source_digest": "3f38ef09692a28b92c2f919b9ce1927759b54eaf029ca44e1cb542347a5a5cd8",
+  "source_head": "c7f5ba5967afdb860b82f68b36f7808283bf9f55",
+  "source_workspace": "/home/shaominghao/CodeSpace/bibit-workspace/.integration-worktrees/gateway-mr7-audit-fixes",
+  "toolchain_digest": "sha256:f75bda5464b7dd7deca2d88bfe1b0f0f"
+}
