@@ -309,7 +309,8 @@ async def managed_status(model: ManagedModel, language: str,
 @router.post("/managed/acquire", response_model=ManagedAcquireResponse, dependencies=[Depends(verify_api_key)])
 async def managed_acquire(body: ManagedAcquireRequest, request: Request,
                           service: AsrService = Depends(get_asr_service)):
-    task = asyncio.create_task(service.managed.acquire(str(body.owner), body.model, body.language))
+    task = asyncio.create_task(service.managed.acquire(str(body.owner), body.model, body.language,
+                                                       body.recovery_secret.get_secret_value()))
     try:
         while not task.done():
             if await request.is_disconnected():
@@ -332,7 +333,7 @@ async def managed_release(body: ManagedReleaseRequest,
 async def managed_recognize(file: UploadFile = File(...), owner: UUID = Form(...),
                             token: str = Form(..., min_length=1), language: str = Form(...),
                             service: AsrService = Depends(get_asr_service)):
-    audio = await file.read()
+    audio = await file.read(get_settings().limits.max_upload_bytes + 1)
     if len(audio) > get_settings().limits.max_upload_bytes:
         from ...common.errors import RequestTooLargeError
         raise RequestTooLargeError("audio upload too large")

@@ -1162,6 +1162,40 @@ class StorageAclRollbackTests(unittest.TestCase):
         self.assertEqual(self.external.stat().st_mode & 0o7777, 0o700)
         self.assertEqual(self.journal.read_bytes(), self.before)
 
+    def test_purge_command_failure_still_tracks_recovery_archive(self):
+        self.snapshot()
+        self.append_change()
+        original = self.run_command
+        def command(*args, **kwargs):
+            if args[:3] == ('dpkg', '--force-depends', '--purge'):
+                directory = self.etc / 'migration-backups/purge-failed'
+                directory.mkdir(parents=True, mode=0o700)
+                self.journal.rename(directory / self.journal.name)
+                raise lifecycle.CheckFailed('purge failed after archive')
+            return original(*args, **kwargs)
+        with patch.object(lifecycle, 'run', side_effect=command):
+            with self.assertRaisesRegex(lifecycle.CheckFailed, 'purge failed after archive'):
+                self.job.purge_with_acl_recovery()
+        self.assertIsNotNone(self.job.storage_acl_purge_archive)
+        self.job.restore_storage_acl()
+        self.assertEqual(self.external.stat().st_mode & 0o7777, 0o700)
+
+    def test_purge_archive_journal_can_restore_external_acl(self):
+        self.snapshot()
+        self.append_change()
+        archive = self.etc / 'migration-backups/purge-test'
+        archive.mkdir(parents=True, mode=0o700)
+        path = archive / self.journal.name
+        self.journal.rename(path)
+        self.job.storage_acl_purge_archive = path
+        self.job.restore_storage_acl()
+        self.assertEqual(self.external.stat().st_mode & 0o7777, 0o700)
+        with self.assertRaises(OSError):
+            os.getxattr(self.external, self.access)
+        archive.chmod(0o755)
+        with self.assertRaises(lifecycle.CheckFailed):
+            self.job.read_storage_acl_journal()
+
     def test_journal_symlink_or_public_permissions_are_rejected_before_install(self):
         self.journal.chmod(0o644)
         with self.assertRaises(lifecycle.CheckFailed):
@@ -1355,11 +1389,15 @@ class ManagedLifecycleTests(unittest.TestCase):
                     nonlocal fd, owner
                     if path == '/healthz':
                         return {'domains': {name: {'ready': True} for name in lifecycle.DOMAINS}}
-                    state = dict(protocol_version=1, model='qwen3_asr_0.6b', languages=['zh'],
+                    state = dict(protocol_version=2, model='qwen3_asr_0.6b', languages=['zh'],
                                  assets_ready=True, instance_id='fixture-process', reason='available',
                                  ready=fd is not None, owner=None if fd is None else owner,
                                  resource_state='free' if fd is None else 'owned')
                     if path.endswith('/acquire'):
+                        self.assertEqual(len(body['recovery_secret']), 64)
+                        if fd is not None:
+                            self.assertEqual(body['owner'], owner)
+                            return dict(state, token='fixture-token')
                         owner = body['owner']
                         fd = os.open(lock, os.O_RDWR)
                         lifecycle.fcntl.flock(fd, lifecycle.fcntl.LOCK_EX | lifecycle.fcntl.LOCK_NB)
@@ -1408,7 +1446,7 @@ class ManagedLifecycleTests(unittest.TestCase):
             calls.append(path)
             if path.endswith('/acquire'):
                 raise TimeoutError('connection failed')
-            return dict(protocol_version=1, model='qwen3_asr_0.6b', languages=['zh'],
+            return dict(protocol_version=2, model='qwen3_asr_0.6b', languages=['zh'],
                         assets_ready=True, instance_id='fixture-process', ready=False,
                         owner=None, resource_state='free')
         with patch.object(lifecycle, 'ENGINE_LOCK', engine), \

@@ -1,0 +1,99 @@
+{
+  "attempts": [
+    {
+      "attempt_id": "att-1bd7db0f453e45b6b70d185350bde034",
+      "board_id": "K3DEB1-2",
+      "created_at": "2026-10-21T02:51:16.441010+00:00",
+      "error": "step proc-3 exited 2",
+      "fence": 402,
+      "finished_at": "2026-10-21T02:52:55.473698+00:00",
+      "request_id": "req-efc6c6af066e4f40815ad86f368e1347",
+      "started_at": "2026-10-21T02:51:28.734098+00:00",
+      "status": "failed"
+    }
+  ],
+  "events": [
+    {
+      "created_at": "2026-10-21T02:52:47.638196+00:00",
+      "event_seq": 225313,
+      "event_type": "step_failed",
+      "payload": {
+        "exit_code": 2,
+        "log_tail": "              ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3/dist-packages/pip/_internal/network/download.py\", line 174, in __call__\n    resp = _http_get_download(self._session, link)\n  File \"/usr/lib/python3/dist-packages/pip/_internal/network/download.py\", line 149, in _http_get_download\n    resp = session.get(target_url, headers=headers, stream=True)\n  File \"/usr/lib/python3/dist-packages/pip/_vendor/requests/sessions.py\", line 602, in get\n    return self.request(\"GET\", url, **kwargs)\n           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3/dist-packages/pip/_internal/network/session.py\", line 523, in request\n    return super().request(method, url, *args, **kwargs)\n           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3/dist-packages/pip/_vendor/requests/sessions.py\", line 589, in request\n    resp = self.send(prep, **send_kwargs)\n  File \"/usr/lib/python3/dist-packages/pip/_vendor/requests/sessions.py\", line 703, in send\n    r = adapter.send(request, **kwargs)\n  File \"/usr/lib/python3/dist-packages/pip/_vendor/cachecontrol/adapter.py\", line 77, in send\n    resp = super().send(request, stream, timeout, verify, cert, proxies)\n  File \"/usr/lib/python3/dist-packages/pip/_vendor/requests/adapters.py\", line 698, in send\n    raise SSLError(e, request=request)\npip._vendor.requests.exceptions.SSLError: HTTPSConnectionPool(host='files.pythonhosted.org', port=443): Max retries exceeded with url: /packages/4a/58/eea5c844003eec82d2423c5393495808291e5c1ddfee266f169375c588a5/fastapi-0.156.4-py3-none-any.whl.metadata (Caused by SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1081)')))\nTraceback (most recent call last):\n  File \"/home/bianbu/gateway-build/src/scripts/prepare-runtime.py\", line 106, in <module>\n    main()\n    ~~~~^^\n  File \"/home/bianbu/gateway-build/src/scripts/prepare-runtime.py\", line 100, in main\n    run(sys.executable, \"-m\", \"pip\", \"wheel\", \"--prefer-binary\", \"--wheel-dir\", wheels,\n    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n        \"--index-url\", PUBLIC_INDEX, *requirements)\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/bianbu/gateway-build/src/scripts/prepare-runtime.py\", line 25, in run\n    subprocess.run([str(arg) for arg in args], cwd=ROOT, env=env, check=True)\n    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.14/subprocess.py\", line 578, in run\n    raise CalledProcessError(retcode, process.args,\n                             output=stdout, stderr=stderr)\nsubprocess.CalledProcessError: Command '['/usr/bin/python3', '-m', 'pip', 'wheel', '--prefer-binary', '--wheel-dir', '/home/bianbu/gateway-build/src/build/runtime/wheels', '--index-url', 'https://pypi.org/simple', 'aiosqlite>=0.19.0', 'build>=1.2.0; extra == \"dev\"', 'fastapi>=0.104.0', 'httpx>=0.25.0', 'httpx>=0.28.1; extra == \"dev\"', 'numpy<2.0; python_version < \"3.9\"', 'numpy>=1.19.0', 'numpy>=1.26.0', 'numpy>=2.2.6', 'numpy>=2; python_version >= \"3.9\"', 'psutil>=5.9.0', 'pydantic-settings>=2.0.0', 'pydantic>=2.0.0', 'pytest-asyncio>=1.3.0; extra == \"dev\"', 'pytest>=6.0; extra == \"dev\"', 'pytest>=9.0.3; extra == \"dev\"', 'python-multipart>=0.0.26', 'pyyaml>=6.0', 'scipy>=1.5.0; extra == \"dev\"', 'uvicorn[standard]>=0.24.0', 'websockets>=12.0; extra == \"dev\"']' returned non-zero exit status 2.\nmake[1]: *** [debian/rules:7：override_dh_auto_build] 错误 1\nmake[1]: 离开目录“/home/bianbu/gateway-build/src”\nmake: *** [debian/rules:4：binary] 错误 2\ndpkg-buildpackage: 错误: debian/rules binary subprocess failed with exit status 2\nbibit-step-att-1bd7db0f453e45b6b70d185350bde034-3.service: Main process exited, code=exited, status=2/INVALIDARGUMENT\nbibit-step-att-1bd7db0f453e45b6b70d185350bde034-3.service: Failed with result 'exit-code'.\nbibit-step-att-1bd7db0f453e45b6b70d185350bde034-3.service: Consumed 9.308s CPU time over 54.473s wall clock time, 370.4M memory peak.\n"
+      }
+    },
+    {
+      "created_at": "2026-10-21T02:52:55.476482+00:00",
+      "event_seq": 225316,
+      "event_type": "finished",
+      "payload": {
+        "response": {
+          "attempt_id": "att-1bd7db0f453e45b6b70d185350bde034",
+          "board_id": "K3DEB1-2",
+          "boot_id": "089b92da-8023-4b2f-a604-a3a9d5ec750f",
+          "detail": {
+            "cleanup_errors": []
+          },
+          "fence": 402,
+          "ok": true,
+          "operation_seq": 13,
+          "processes": [
+            {
+              "cgroup_unit": "bibit-step-att-1bd7db0f453e45b6b70d185350bde034-3.service",
+              "command": [
+                "sh",
+                "scripts/build-deb.sh"
+              ],
+              "observed": {
+                "active": "failed",
+                "cgroup": null,
+                "empty": true,
+                "exists": true,
+                "exit_code": 2,
+                "pid": 0,
+                "result": "exit-code",
+                "sub": "failed"
+              },
+              "operation_seq": 3,
+              "pid": 835412,
+              "process_id": "proc-3",
+              "started_at": 1792551093.4024928,
+              "status": "stopped"
+            }
+          ],
+          "protocol": 1,
+          "safe_to_release": true,
+          "services": [],
+          "status": "clean"
+        },
+        "status": "failed"
+      }
+    }
+  ],
+  "occupancy": [],
+  "request": {
+    "cancel_reason": null,
+    "cancel_requested": false,
+    "capabilities": [
+      "build",
+      "riscv64"
+    ],
+    "created_at": "2026-10-21T02:51:15.638623+00:00",
+    "devices": [],
+    "enqueue_seq": 1224,
+    "idempotency_key": "build-gateway-dd7fc5a07a01b097f463451b6c9ac7d632a0c45fa0b30608b1e62c6f924d84ff-mr7-complete-fixes-any",
+    "input_digest": "dd7fc5a07a01b097f463451b6c9ac7d632a0c45fa0b30608b1e62c6f924d84ff",
+    "metadata": {
+      "agent": "mr7-complete-fixes",
+      "branch": "fix/gateway-mr7-complete",
+      "git_head": "e4e28ce528fccc3cfebc26a8498a021c1ff5af4b",
+      "snapshot": "/home/shaominghao/.local/state/bibit-dev/snapshots/snapshot-dd7fc5a07a01b097f463451b6c9ac7d632a0c45fa0b30608b1e62c6f924d84ff.tar"
+    },
+    "recipe": "gateway",
+    "release_requested": false,
+    "request_id": "req-efc6c6af066e4f40815ad86f368e1347",
+    "status": "failed",
+    "updated_at": "2026-10-21T02:52:55.473698+00:00",
+    "workspace": "/home/shaominghao/CodeSpace/bibit-workspace/.integration-worktrees/gateway-mr7-complete-fixes"
+  }
+}

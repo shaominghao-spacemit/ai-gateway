@@ -1,0 +1,258 @@
+{
+  "attempts": [
+    {
+      "attempt_id": "att-9f0a79cdae644320a1e77390ff4117cc",
+      "board_id": "K3DEB1",
+      "created_at": "2026-10-21T03:47:37.714062+00:00",
+      "error": null,
+      "fence": 416,
+      "finished_at": "2026-10-21T04:05:40.163698+00:00",
+      "request_id": "req-b033bf3d430642a3b23b74fec1145538",
+      "started_at": "2026-10-21T03:47:44.803717+00:00",
+      "status": "completed"
+    }
+  ],
+  "events": [
+    {
+      "created_at": "2026-10-21T04:00:35.908583+00:00",
+      "event_seq": 226641,
+      "event_type": "gateway_lifecycle_result",
+      "payload": {
+        "artifact_id": "voice-ab60fb7e4884",
+        "attempt_id": "att-9f0a79cdae644320a1e77390ff4117cc",
+        "backup": "/var/tmp/voice-gateway-lifecycle-aochf87n",
+        "cases_sha256": "980df6db17d1084692d9d0b66b4a5db6f8435417da9e93f2a570bab33fdcc67a",
+        "checks": [
+          "four-input-digests-and-both-model-cases",
+          "pre-mutation-package-file-acl-lock-preference-service-snapshot",
+          "managed-assets-generated-and-verified",
+          "managed-assets-generated-and-verified",
+          "managed-assets-generated-and-verified",
+          "mainpid-local-gateway-local-and-offline-both-real-models",
+          "voice-first-no-key",
+          "managed-assets-generated-and-verified",
+          "gateway-first-key-before-voice",
+          "voice-first-gateway-first-reinstall-remove",
+          "original-packages-key-lock-inode-preferences-system-user-services-restored"
+        ],
+        "gateway_sha256": "b3f40283f4168886d44cee48c01af7f22ad336583a0f834900c054f428fd2e10",
+        "log": "/home/bianbu/bibit-build/evidence/att-9f0a79cdae644320a1e77390ff4117cc/voice-gateway-lifecycle-aochf87n-summary.json",
+        "managed_asr": {
+          "contract": "managed-asr-v2",
+          "main_pid": 3361488,
+          "models": [
+            {
+              "audio_sha256": "a0253708ca95edcb5f36158de97f817adbd5daa7ff5e2a5fdd9d21375b2a9096",
+              "backend": "local",
+              "event_count": 4,
+              "model": "sensevoice",
+              "model_type": "sensevoice",
+              "result": "ok"
+            },
+            {
+              "audio_sha256": "a0253708ca95edcb5f36158de97f817adbd5daa7ff5e2a5fdd9d21375b2a9096",
+              "backend": "gateway",
+              "event_count": 4,
+              "model": "sensevoice",
+              "model_type": "sensevoice",
+              "result": "ok"
+            },
+            {
+              "audio_sha256": "a0253708ca95edcb5f36158de97f817adbd5daa7ff5e2a5fdd9d21375b2a9096",
+              "backend": "local",
+              "event_count": 4,
+              "model": "qwen3_asr_0.6b",
+              "model_type": "qwen3_asr_0.6b",
+              "result": "ok"
+            },
+            {
+              "audio_sha256": "a0253708ca95edcb5f36158de97f817adbd5daa7ff5e2a5fdd9d21375b2a9096",
+              "backend": "gateway",
+              "event_count": 4,
+              "model": "qwen3_asr_0.6b",
+              "model_type": "qwen3_asr_0.6b",
+              "result": "ok"
+            }
+          ],
+          "result": "ok",
+          "t18": {
+            "reason": "both_models_verified",
+            "result": "ok"
+          }
+        },
+        "managed_cases_sha256": "980df6db17d1084692d9d0b66b4a5db6f8435417da9e93f2a570bab33fdcc67a",
+        "request_id": "req-b033bf3d430642a3b23b74fec1145538",
+        "restored": true,
+        "result": "ok",
+        "sha256": "3a1cd907d57b3a23c96e70d0d9b6e92995421e23cd8557927c0c4fbba25fd802",
+        "sherpa_sha256": "a37b90845088dd905d0298ddd11efda4a7325930e0fc8a02776eea55678318a7",
+        "voice_sha256": "3a1cd907d57b3a23c96e70d0d9b6e92995421e23cd8557927c0c4fbba25fd802"
+      }
+    },
+    {
+      "created_at": "2026-10-21T04:00:36.178543+00:00",
+      "event_seq": 226642,
+      "event_type": "deployed",
+      "payload": {
+        "artifact_id": "voice-ab60fb7e4884",
+        "attempt_id": "att-9f0a79cdae644320a1e77390ff4117cc",
+        "backup": "/var/tmp/voice-gateway-lifecycle-aochf87n",
+        "cases_sha256": "980df6db17d1084692d9d0b66b4a5db6f8435417da9e93f2a570bab33fdcc67a",
+        "checks": [
+          "four-input-digests-and-both-model-cases",
+          "pre-mutation-package-file-acl-lock-preference-service-snapshot",
+          "managed-assets-generated-and-verified",
+          "managed-assets-generated-and-verified",
+          "managed-assets-generated-and-verified",
+          "mainpid-local-gateway-local-and-offline-both-real-models",
+          "voice-first-no-key",
+          "managed-assets-generated-and-verified",
+          "gateway-first-key-before-voice",
+          "voice-first-gateway-first-reinstall-remove",
+          "original-packages-key-lock-inode-preferences-system-user-services-restored"
+        ],
+        "evidence_dir": "/home/shaominghao/.local/state/bibit-dev/evidence/req-b033bf3d430642a3b23b74fec1145538",
+        "gateway_sha256": "b3f40283f4168886d44cee48c01af7f22ad336583a0f834900c054f428fd2e10",
+        "log": "/home/bianbu/bibit-build/evidence/att-9f0a79cdae644320a1e77390ff4117cc/voice-gateway-lifecycle-aochf87n-summary.json",
+        "log_local": "/home/shaominghao/.local/state/bibit-dev/evidence/req-b033bf3d430642a3b23b74fec1145538/voice-gateway-lifecycle-aochf87n-summary.json",
+        "managed_asr": {
+          "contract": "managed-asr-v2",
+          "main_pid": 3361488,
+          "models": [
+            {
+              "audio_sha256": "a0253708ca95edcb5f36158de97f817adbd5daa7ff5e2a5fdd9d21375b2a9096",
+              "backend": "local",
+              "event_count": 4,
+              "model": "sensevoice",
+              "model_type": "sensevoice",
+              "result": "ok"
+            },
+            {
+              "audio_sha256": "a0253708ca95edcb5f36158de97f817adbd5daa7ff5e2a5fdd9d21375b2a9096",
+              "backend": "gateway",
+              "event_count": 4,
+              "model": "sensevoice",
+              "model_type": "sensevoice",
+              "result": "ok"
+            },
+            {
+              "audio_sha256": "a0253708ca95edcb5f36158de97f817adbd5daa7ff5e2a5fdd9d21375b2a9096",
+              "backend": "local",
+              "event_count": 4,
+              "model": "qwen3_asr_0.6b",
+              "model_type": "qwen3_asr_0.6b",
+              "result": "ok"
+            },
+            {
+              "audio_sha256": "a0253708ca95edcb5f36158de97f817adbd5daa7ff5e2a5fdd9d21375b2a9096",
+              "backend": "gateway",
+              "event_count": 4,
+              "model": "qwen3_asr_0.6b",
+              "model_type": "qwen3_asr_0.6b",
+              "result": "ok"
+            }
+          ],
+          "result": "ok",
+          "t18": {
+            "reason": "both_models_verified",
+            "result": "ok"
+          }
+        },
+        "managed_cases_sha256": "980df6db17d1084692d9d0b66b4a5db6f8435417da9e93f2a570bab33fdcc67a",
+        "request_id": "req-b033bf3d430642a3b23b74fec1145538",
+        "restored": true,
+        "result": "ok",
+        "sha256": "3a1cd907d57b3a23c96e70d0d9b6e92995421e23cd8557927c0c4fbba25fd802",
+        "sherpa_sha256": "a37b90845088dd905d0298ddd11efda4a7325930e0fc8a02776eea55678318a7",
+        "voice_sha256": "3a1cd907d57b3a23c96e70d0d9b6e92995421e23cd8557927c0c4fbba25fd802"
+      }
+    },
+    {
+      "created_at": "2026-10-21T04:00:36.181952+00:00",
+      "event_seq": 226643,
+      "event_type": "holding",
+      "payload": {
+        "hint": "人在看的时候用 bibit-dev verify release req-b033bf3d430642a3b23b74fec1145538 提前交还",
+        "hold_seconds": 2400,
+        "hold_until": "2026-10-21T04:40:36.181918+00:00"
+      }
+    },
+    {
+      "created_at": "2026-10-21T04:05:40.165406+00:00",
+      "event_seq": 226683,
+      "event_type": "finished",
+      "payload": {
+        "response": {
+          "attempt_id": "att-9f0a79cdae644320a1e77390ff4117cc",
+          "board_id": "K3DEB1",
+          "boot_id": "db9ec2a8-e6a9-4649-b087-2c65fe3a825a",
+          "detail": {
+            "cleanup_errors": []
+          },
+          "fence": 416,
+          "ok": true,
+          "operation_seq": 35,
+          "processes": [],
+          "protocol": 1,
+          "safe_to_release": true,
+          "services": [],
+          "status": "clean"
+        },
+        "status": "completed"
+      }
+    },
+    {
+      "created_at": "2026-10-21T04:09:03.318631+00:00",
+      "event_seq": 226797,
+      "event_type": "verify.item",
+      "payload": {
+        "artifact_id": "voice-ab60fb7e4884",
+        "evidence": "/home/shaominghao/CodeSpace/bibit-workspace/.integration-worktrees/gateway-mr7-complete-fixes/docs/verification/evidence/task-636a994501a04acb/joint-v2-summary.json",
+        "item": "voice-gateway-v2-real-models",
+        "note": "双模型local/gateway真人音频、稳定MainPID、安装先后、restored=true；不覆盖后续离线回滚助手补修",
+        "owner": "agent",
+        "result": "pass"
+      }
+    }
+  ],
+  "occupancy": [],
+  "request": {
+    "cancel_reason": null,
+    "cancel_requested": false,
+    "capabilities": [
+      "riscv64",
+      "voice"
+    ],
+    "created_at": "2026-10-21T03:47:36.761015+00:00",
+    "devices": [],
+    "enqueue_seq": 1237,
+    "idempotency_key": "accept-voice-managed-voice-ab60fb7e4884-gateway-0cfa6a877770-gateway-mr7-v2-joint-K3DEB1-1c666d52844890486d00333414de42bd1b85284602a0b60469f5b2a095f106d2",
+    "input_digest": "1c666d52844890486d00333414de42bd1b85284602a0b60469f5b2a095f106d2",
+    "metadata": {
+      "agent": "gateway-mr7-v2-joint",
+      "artifact": "voice-ab60fb7e4884",
+      "board": "K3DEB1",
+      "gateway_artifact": "gateway-0cfa6a877770",
+      "gateway_artifact_id": "gateway-0cfa6a877770",
+      "gateway_sha256": "b3f40283f4168886d44cee48c01af7f22ad336583a0f834900c054f428fd2e10",
+      "gateway_source_branch": "fix/gateway-mr7-complete",
+      "gateway_source_head": "e4e28ce528fccc3cfebc26a8498a021c1ff5af4b",
+      "gateway_source_workspace": "/home/shaominghao/CodeSpace/bibit-workspace/.integration-worktrees/gateway-mr7-complete-fixes",
+      "hold_seconds": 2400,
+      "managed_cases": "/home/shaominghao/CodeSpace/bibit-workspace/.integration-worktrees/gateway-mr7-complete-fixes/docs/verification/evidence/task-b15a2812223a40c5/voice-managed-asr-cases.json",
+      "managed_cases_sha256": "980df6db17d1084692d9d0b66b4a5db6f8435417da9e93f2a570bab33fdcc67a",
+      "sherpa_sha256": "a37b90845088dd905d0298ddd11efda4a7325930e0fc8a02776eea55678318a7",
+      "voice_artifact": "voice-ab60fb7e4884",
+      "voice_sha256": "3a1cd907d57b3a23c96e70d0d9b6e92995421e23cd8557927c0c4fbba25fd802",
+      "voice_source_branch": "fix/voice-gateway-session",
+      "voice_source_head": "0ce3cfec7e0242947cc862836c79563e3a12abbc",
+      "voice_source_workspace": "/home/shaominghao/CodeSpace/bibit-workspace/.integration-worktrees/voice-gateway-session-fixes"
+    },
+    "recipe": "voice-managed-accept",
+    "release_requested": true,
+    "request_id": "req-b033bf3d430642a3b23b74fec1145538",
+    "status": "completed",
+    "updated_at": "2026-10-21T04:05:40.163698+00:00",
+    "workspace": "artifact:voice-ab60fb7e4884+gateway-0cfa6a877770"
+  }
+}

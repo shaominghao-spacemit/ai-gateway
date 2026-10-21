@@ -52,7 +52,7 @@ class FakeBackend:
 
 async def test_session_exact_target_and_legacy_default(managed):
     owner = str(uuid4())
-    result = await managed.acquire(owner, 'qwen3_asr_0.6b', 'zh,en')
+    result = await managed.acquire(owner, 'qwen3_asr_0.6b', 'zh,en', 'test-recovery-secret-' + 'x' * 32)
     assert result['ready'] and result['resource_state'] == 'owned'
     assert managed.service._default == 'sensevoice'
     other = await managed.status('sensevoice', 'zh')
@@ -77,7 +77,7 @@ async def test_session_exact_target_and_legacy_default(managed):
 
 async def test_disconnect_release_waits_for_real_inference(managed):
     owner = str(uuid4())
-    result = await managed.acquire(owner, 'sensevoice', 'zh')
+    result = await managed.acquire(owner, 'sensevoice', 'zh', 'test-recovery-secret-' + 'x' * 32)
     backend = managed.backend
     backend.finish.clear()
     request = asyncio.create_task(managed.recognize(owner, result['token'], 'zh', b'\0\0'))
@@ -99,7 +99,7 @@ async def test_old_model_never_unloaded(managed):
     managed.service._backends['sensevoice'] = old
     try:
         with pytest.raises(DomainError):
-            await managed.acquire(str(uuid4()), 'qwen3_asr_0.6b', 'zh,en')
+            await managed.acquire(str(uuid4()), 'qwen3_asr_0.6b', 'zh,en', 'test-recovery-secret-' + 'x' * 32)
         old.shutdown.assert_not_called()
         assert (await managed.status('sensevoice', 'zh'))['reason'] == 'legacy_asr_loaded'
     finally:
@@ -112,7 +112,7 @@ async def test_status_never_loads_and_lists_never_fall_back(managed):
     assert status['reason'] == 'sensevoice_language_list_unsupported'
     assert managed.backend is None
     with pytest.raises(DomainError):
-        await managed.acquire(str(uuid4()), 'sensevoice', 'zh,en')
+        await managed.acquire(str(uuid4()), 'sensevoice', 'zh,en', 'test-recovery-secret-' + 'x' * 32)
 
 
 async def test_start_failure_releases_lock_and_allows_retry(managed, monkeypatch):
@@ -122,20 +122,20 @@ async def test_start_failure_releases_lock_and_allows_retry(managed, monkeypatch
             raise OSError('start failed')
     monkeypatch.setattr(module, 'ManagedBackend', Broken)
     with pytest.raises(DomainError, match='start_failed'):
-        await managed.acquire(str(uuid4()), 'sensevoice', 'zh')
+        await managed.acquire(str(uuid4()), 'sensevoice', 'zh', 'test-recovery-secret-' + 'x' * 32)
     assert not managed.active
     fd = module.take_lock(managed.config.managed.lock_path)
     import os
     os.close(fd)
     monkeypatch.setattr(module, 'ManagedBackend', FakeBackend)
-    result = await managed.acquire(str(uuid4()), 'sensevoice', 'zh')
+    result = await managed.acquire(str(uuid4()), 'sensevoice', 'zh', 'test-recovery-secret-' + 'x' * 32)
     assert result['ready']
 
 
 async def test_shutdown_failure_retains_lock_and_can_retry(managed, monkeypatch):
     from spacemit_ai_gateway.domains.asr.managed import take_lock
     owner = str(uuid4())
-    result = await managed.acquire(owner, 'sensevoice', 'zh')
+    result = await managed.acquire(owner, 'sensevoice', 'zh', 'test-recovery-secret-' + 'x' * 32)
     from unittest.mock import AsyncMock
     original = managed.backend.shutdown
     monkeypatch.setattr(managed.backend, 'shutdown', AsyncMock(side_effect=OSError('busy')))
@@ -155,12 +155,12 @@ async def test_lock_conflict_and_unmanaged_process_refused(managed, monkeypatch)
     try:
         assert (await managed.status('sensevoice', 'zh'))['resource_state'] == 'blocked'
         with pytest.raises(DomainError, match='engine_lock_busy'):
-            await managed.acquire(str(uuid4()), 'sensevoice', 'zh')
+            await managed.acquire(str(uuid4()), 'sensevoice', 'zh', 'test-recovery-secret-' + 'x' * 32)
     finally:
         os.close(fd)
     monkeypatch.setattr(module, 'foreign_processes', lambda *args: 'unmanaged_asr_process:123')
     with pytest.raises(DomainError, match='unmanaged_asr_process'):
-        await managed.acquire(str(uuid4()), 'sensevoice', 'zh')
+        await managed.acquire(str(uuid4()), 'sensevoice', 'zh', 'test-recovery-secret-' + 'x' * 32)
     assert managed.backend is None
 
 
@@ -173,7 +173,7 @@ async def test_cancelled_acquire_waits_start_then_cleans_orphan(managed, monkeyp
             started.set()
             await finish.wait()
     monkeypatch.setattr(module, 'ManagedBackend', Slow)
-    acquire = asyncio.create_task(managed.acquire(str(uuid4()), 'sensevoice', 'zh'))
+    acquire = asyncio.create_task(managed.acquire(str(uuid4()), 'sensevoice', 'zh', 'test-recovery-secret-' + 'x' * 32))
     await started.wait()
     backend = managed.backend
     acquire.cancel()
@@ -192,7 +192,7 @@ async def test_cancelled_acquire_waits_start_then_cleans_orphan(managed, monkeyp
 
 async def test_cancelled_release_keeps_waiting_for_inference(managed):
     owner = str(uuid4())
-    acquired = await managed.acquire(owner, 'sensevoice', 'zh')
+    acquired = await managed.acquire(owner, 'sensevoice', 'zh', 'test-recovery-secret-' + 'x' * 32)
     token = acquired['token']
     managed.backend.finish.clear()
     request = asyncio.create_task(managed.recognize(owner, token, 'en', b'\0\0'))
@@ -213,21 +213,21 @@ async def test_cancelled_release_keeps_waiting_for_inference(managed):
 
 async def test_language_changes_do_not_reload_and_owner_retry_recovers_token(managed):
     owner = str(uuid4())
-    acquired = await managed.acquire(owner, 'qwen3_asr_0.6b', 'zh,en')
+    acquired = await managed.acquire(owner, 'qwen3_asr_0.6b', 'zh,en', 'test-recovery-secret-' + 'x' * 32)
     backend = managed.backend
     for language in ('en', 'zh', 'auto', 'zh,en'):
         status = await managed.status('qwen3_asr_0.6b', language)
         assert status['ready'] and status['languages'] == language.split(',')
-        retry = await managed.acquire(owner, 'qwen3_asr_0.6b', language)
+        retry = await managed.acquire(owner, 'qwen3_asr_0.6b', language, 'test-recovery-secret-' + 'x' * 32)
         assert retry['token'] == acquired['token']
         assert await managed.recognize(owner, acquired['token'], language, b'\0\0') == f'qwen3_asr_0.6b:{language}'
         assert managed.backend is backend
     with pytest.raises(DomainError):
-        await managed.acquire(str(uuid4()), 'qwen3_asr_0.6b', 'zh')
+        await managed.acquire(str(uuid4()), 'qwen3_asr_0.6b', 'zh', 'test-recovery-secret-' + 'x' * 32)
 
 
 async def test_two_owners_race_one_wins(managed):
-    results = await asyncio.gather(*(managed.acquire(str(uuid4()), 'sensevoice', 'zh')
+    results = await asyncio.gather(*(managed.acquire(str(uuid4()), 'sensevoice', 'zh', 'test-recovery-secret-' + 'x' * 32)
                                      for _ in range(2)), return_exceptions=True)
     assert sum(isinstance(r, dict) for r in results) == 1
     assert sum(isinstance(r, DomainError) for r in results) == 1
@@ -238,12 +238,12 @@ async def test_assets_missing_disabled_and_bad_languages(managed, monkeypatch):
     managed.config.managed.enabled = False
     assert (await managed.status('sensevoice', 'zh'))['reason'] == 'managed_disabled'
     with pytest.raises(DomainError, match='managed_disabled'):
-        await managed.acquire(str(uuid4()), 'sensevoice', 'zh')
+        await managed.acquire(str(uuid4()), 'sensevoice', 'zh', 'test-recovery-secret-' + 'x' * 32)
     managed.config.managed.enabled = True
     monkeypatch.setattr(module, 'check_assets', lambda *args: (False, 'missing_encoder'))
     assert not (await managed.status('qwen3_asr_0.6b', 'zh,en'))['assets_ready']
     with pytest.raises(DomainError, match='missing_encoder'):
-        await managed.acquire(str(uuid4()), 'qwen3_asr_0.6b', 'zh,en')
+        await managed.acquire(str(uuid4()), 'qwen3_asr_0.6b', 'zh,en', 'test-recovery-secret-' + 'x' * 32)
     for language in ('unknown', 'zh,', 'auto,zh', ''):
         with pytest.raises(DomainError):
             await managed.status('sensevoice', language)
@@ -261,7 +261,7 @@ async def test_legacy_unload_cannot_race_acquire(managed):
     managed.service._legacy_asr_used = True
     unload = asyncio.create_task(managed.service.unload_model('sensevoice'))
     await entered.wait()
-    acquire = asyncio.create_task(managed.acquire(str(uuid4()), 'sensevoice', 'zh'))
+    acquire = asyncio.create_task(managed.acquire(str(uuid4()), 'sensevoice', 'zh', 'test-recovery-secret-' + 'x' * 32))
     await asyncio.sleep(0)
     assert not acquire.done()
     finish.set()
@@ -288,20 +288,42 @@ async def test_http_auth_validation_and_session_routes(managed, monkeypatch):
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
         query = '/v1/asr/managed/status?model=qwen3_asr_0.6b&language=zh,en'
         assert (await client.get(query)).status_code == 401
+        assert (await client.get('/v1/asr/jobs/private-job')).status_code == 401
         headers = {'Authorization': 'Bearer test-device-key'}
         assert (await client.get(query, headers={'X-API-Key': 'wrong'})).status_code == 403
         status = (await client.get(query, headers=headers)).json()
-        assert status['protocol_version'] == 1 and status['languages'] == ['zh', 'en']
+        assert status['protocol_version'] == 2 and status['languages'] == ['zh', 'en']
         owner = str(uuid4())
         assert (await client.post('/v1/asr/managed/acquire', json={
-            'owner': owner, 'model': 'qwen3_asr_0.6b', 'language': 'zh,en'})).status_code == 401
+            'owner': owner, 'model': 'qwen3_asr_0.6b', 'language': 'zh,en',
+            'recovery_secret': 'test-recovery-secret-' + 'x' * 32})).status_code == 401
         invalid = await client.post('/v1/asr/managed/acquire', headers=headers, json={
             'owner': 'not-a-uuid', 'model': 'qwen3_asr_0.6b', 'language': 'zh,en'})
         assert invalid.status_code == 422
         acquired = await client.post('/v1/asr/managed/acquire', headers=headers, json={
-            'owner': owner, 'model': 'qwen3_asr_0.6b', 'language': 'zh,en'})
+            'owner': owner, 'model': 'qwen3_asr_0.6b', 'language': 'zh,en',
+            'recovery_secret': 'test-recovery-secret-' + 'x' * 32})
         assert acquired.status_code == 200, acquired.text
         token = acquired.json()['token']
+        secret = 'test-recovery-secret-' + 'x' * 32
+        payload = {'owner': owner, 'model': 'qwen3_asr_0.6b', 'language': 'zh,en',
+                   'recovery_secret': secret}
+        for invalid_secret in ('different-independent-secret-' + 'z' * 32,):
+            stolen = await client.post('/v1/asr/managed/acquire', headers=headers,
+                                       json=dict(payload, recovery_secret=invalid_secret))
+            assert stolen.status_code == 403 and token not in stolen.text
+            assert secret not in stolen.text and invalid_secret not in stolen.text
+        for invalid_secret in ('too-short-secret', 'secret-' + 'z' * 128, 'a' * 31 + '\ud800', 987654321, {'secret': secret}):
+            invalid = await client.post('/v1/asr/managed/acquire',
+                                        headers={**headers, 'Content-Type': 'application/json'},
+                                        content=__import__('json').dumps(dict(payload, recovery_secret=invalid_secret)))
+            assert invalid.status_code == 422
+            assert secret not in invalid.text and str(invalid_secret) not in invalid.text
+        recovered = await client.post('/v1/asr/managed/acquire', headers=headers, json=payload)
+        assert recovered.status_code == 200 and recovered.json()['token'] == token
+        visible = await client.get(query, headers=headers)
+        assert secret not in visible.text and token not in visible.text
+        assert not {'recovery_secret', 'recovery_digest', 'token'} & visible.json().keys()
         result = await client.post('/v1/asr/managed/recognize', headers=headers,
                                    data={'owner': owner, 'token': token, 'language': 'zh,en'},
                                    files={'file': ('test.pcm', b'\0\0' * 160, 'application/octet-stream')})
@@ -325,7 +347,8 @@ async def test_acquire_http_disconnect_cleans_unreceived_session(managed, monkey
         async def is_disconnected(self):
             return started.is_set()
     monkeypatch.setattr(module, 'ManagedBackend', Slow)
-    body = ManagedAcquireRequest(owner=uuid4(), model='qwen3_asr_0.6b', language='zh')
+    body = ManagedAcquireRequest(owner=uuid4(), model='qwen3_asr_0.6b', language='zh',
+                                 recovery_secret='test-recovery-secret-' + 'x' * 32)
     request = asyncio.create_task(managed_acquire(body, Disconnect(), managed.service))
     await started.wait()
     with pytest.raises(asyncio.CancelledError):
@@ -482,14 +505,14 @@ async def test_failed_acquire_cleanup_retries_without_delivered_token(managed, m
     monkeypatch.setattr(module, 'ManagedBackend', Broken)
     managed.config.managed.shutdown_timeout = .01
     with pytest.raises(DomainError, match='start_failed'):
-        await managed.acquire(str(uuid4()), 'sensevoice', 'zh')
+        await managed.acquire(str(uuid4()), 'sensevoice', 'zh', 'test-recovery-secret-' + 'x' * 32)
     await asyncio.wait_for(cleaned.wait(), 1)
     while managed.operations:
         await asyncio.gather(*tuple(managed.operations))
     assert not managed.active and managed.delivered_token is None
     monkeypatch.setattr(module, 'ManagedBackend', FakeBackend)
     owner = str(uuid4())
-    acquired = await managed.acquire(owner, 'sensevoice', 'zh')
+    acquired = await managed.acquire(owner, 'sensevoice', 'zh', 'test-recovery-secret-' + 'x' * 32)
     await managed.release(owner, acquired['token'])
 
 
@@ -498,7 +521,7 @@ async def test_managed_health_reports_backend_failure(managed):
     from unittest.mock import AsyncMock
     from spacemit_ai_gateway.gateway import health
     owner = str(uuid4())
-    acquired = await managed.acquire(owner, 'sensevoice', 'zh')
+    acquired = await managed.acquire(owner, 'sensevoice', 'zh', 'test-recovery-secret-' + 'x' * 32)
     assert (await managed.service.healthz())['ready']
     managed.backend.stopped.set()
     failed = await managed.service.healthz()
@@ -552,7 +575,7 @@ async def test_undelivered_cleanup_retains_lock_and_shutdown_can_retry(managed, 
     monkeypatch.setattr(module, 'ManagedBackend', Broken)
     managed.config.managed.shutdown_timeout = .01
     with pytest.raises(DomainError, match='start_failed'):
-        await managed.acquire(str(uuid4()), 'sensevoice', 'auto')
+        await managed.acquire(str(uuid4()), 'sensevoice', 'auto', 'test-recovery-secret-' + 'x' * 32)
     await asyncio.sleep(.06)
     with pytest.raises(BlockingIOError):
         module.take_lock(managed.config.managed.lock_path)
@@ -565,7 +588,7 @@ async def test_undelivered_cleanup_retains_lock_and_shutdown_can_retry(managed, 
 
 async def test_managed_health_failure_closing_and_release_to_idle(managed):
     owner = str(uuid4())
-    result = await managed.acquire(owner, 'sensevoice', 'auto')
+    result = await managed.acquire(owner, 'sensevoice', 'auto', 'test-recovery-secret-' + 'x' * 32)
     managed.failed = True
     assert (await managed.service.healthz())['state'] == 'failed'
     managed.failed = False
@@ -580,13 +603,13 @@ async def test_acquire_status_exception_releases_undelivered_session(managed, mo
         raise OSError('status probe failed')
     monkeypatch.setattr(managed, 'status', unavailable)
     with pytest.raises(OSError, match='status probe failed'):
-        await managed.acquire(str(uuid4()), 'sensevoice', 'zh')
+        await managed.acquire(str(uuid4()), 'sensevoice', 'zh', 'test-recovery-secret-' + 'x' * 32)
     assert not managed.active and managed.delivered_token is None
 
 
 async def test_acquire_retry_status_failure_preserves_delivered_session(managed, monkeypatch):
     owner = str(uuid4())
-    acquired = await managed.acquire(owner, 'sensevoice', 'zh')
+    acquired = await managed.acquire(owner, 'sensevoice', 'zh', 'test-recovery-secret-' + 'x' * 32)
     backend = managed.backend
 
     async def unavailable(*args):
@@ -594,7 +617,7 @@ async def test_acquire_retry_status_failure_preserves_delivered_session(managed,
 
     monkeypatch.setattr(managed, 'status', unavailable)
     with pytest.raises(OSError, match='status probe failed'):
-        await managed.acquire(owner, 'sensevoice', 'zh')
+        await managed.acquire(owner, 'sensevoice', 'zh', 'test-recovery-secret-' + 'x' * 32)
     assert managed.backend is backend and not backend.stopped.is_set()
     assert managed.delivered_token == acquired['token']
     assert await managed.recognize(owner, acquired['token'], 'zh', b'\0\0') == 'sensevoice:zh'
@@ -621,12 +644,12 @@ async def test_released_cleanup_does_not_block_next_failed_acquire_cleanup(manag
     managed.config.managed.shutdown_timeout = .01
     owner = str(uuid4())
     with pytest.raises(DomainError, match='start_failed'):
-        await managed.acquire(owner, 'sensevoice', 'auto')
+        await managed.acquire(owner, 'sensevoice', 'auto', 'test-recovery-secret-' + 'x' * 32)
     previous_cleanup = managed.cleanup_task
     managed.backend.can_stop = True
     await managed.release(owner, managed.token)
     with pytest.raises(DomainError, match='start_failed'):
-        await managed.acquire(str(uuid4()), 'sensevoice', 'auto')
+        await managed.acquire(str(uuid4()), 'sensevoice', 'auto', 'test-recovery-secret-' + 'x' * 32)
     assert managed.cleanup_task is not previous_cleanup
     backend = managed.backend
     backend.can_stop = True
@@ -641,7 +664,7 @@ async def test_released_cleanup_does_not_block_next_failed_acquire_cleanup(manag
 
 async def test_health_probe_finishing_after_release_returns_idle(managed):
     owner = str(uuid4())
-    acquired = await managed.acquire(owner, 'sensevoice', 'auto')
+    acquired = await managed.acquire(owner, 'sensevoice', 'auto', 'test-recovery-secret-' + 'x' * 32)
     entered, finish = asyncio.Event(), asyncio.Event()
 
     async def slow_health():
@@ -661,7 +684,7 @@ async def test_health_probe_finishing_after_release_returns_idle(managed):
 
 async def test_old_health_probe_resamples_new_managed_model(managed):
     owner = str(uuid4())
-    acquired = await managed.acquire(owner, 'sensevoice', 'auto')
+    acquired = await managed.acquire(owner, 'sensevoice', 'auto', 'test-recovery-secret-' + 'x' * 32)
     entered, finish = asyncio.Event(), asyncio.Event()
     async def old_health():
         entered.set()
@@ -672,7 +695,7 @@ async def test_old_health_probe_resamples_new_managed_model(managed):
     try:
         await entered.wait()
         await managed.release(owner, acquired['token'])
-        await managed.acquire(str(uuid4()), 'qwen3_asr_0.6b', 'zh')
+        await managed.acquire(str(uuid4()), 'qwen3_asr_0.6b', 'zh', 'test-recovery-secret-' + 'x' * 32)
     finally:
         finish.set()
     health = await probe
@@ -754,7 +777,7 @@ async def test_sensevoice_running_worker_hang_degrades_without_cancelling_io(fin
 @pytest.mark.parametrize('same_owner', [False, True])
 async def test_stale_acquire_cannot_corrupt_next_delivered_session(managed, monkeypatch, boundary, same_owner):
     owner = str(uuid4())
-    acquired = await managed.acquire(owner, 'sensevoice', 'zh')
+    acquired = await managed.acquire(owner, 'sensevoice', 'zh', 'test-recovery-secret-' + 'x' * 32)
     entered, finish = asyncio.Event(), asyncio.Event()
     original = getattr(managed, 'status' if boundary == 'status' else '_acquire')
 
@@ -770,13 +793,13 @@ async def test_stale_acquire_cannot_corrupt_next_delivered_session(managed, monk
 
     attribute = 'status' if boundary == 'status' else '_acquire'
     monkeypatch.setattr(managed, attribute, delayed)
-    retry = asyncio.create_task(managed.acquire(owner, 'sensevoice', 'zh'))
+    retry = asyncio.create_task(managed.acquire(owner, 'sensevoice', 'zh', 'test-recovery-secret-' + 'x' * 32))
     try:
         await asyncio.wait_for(entered.wait(), 1)
         await managed.release(owner, acquired['token'])
         monkeypatch.setattr(managed, attribute, original)
         next_owner = owner if same_owner else str(uuid4())
-        next_session = await managed.acquire(next_owner, 'sensevoice', 'zh')
+        next_session = await managed.acquire(next_owner, 'sensevoice', 'zh', 'test-recovery-secret-' + 'x' * 32)
         backend = managed.backend
         finish.set()
         with pytest.raises(DomainError, match='invalid_managed_session'):
@@ -788,9 +811,46 @@ async def test_stale_acquire_cannot_corrupt_next_delivered_session(managed, monk
 
         monkeypatch.setattr(managed, 'status', unavailable)
         with pytest.raises(OSError, match='status probe failed'):
-            await managed.acquire(next_owner, 'sensevoice', 'zh')
+            await managed.acquire(next_owner, 'sensevoice', 'zh', 'test-recovery-secret-' + 'x' * 32)
         assert managed.backend is backend and not backend.stopped.is_set()
         assert await managed.recognize(next_owner, next_session['token'], 'zh', b'\0\0') == 'sensevoice:zh'
     finally:
         finish.set()
         await asyncio.gather(retry, return_exceptions=True)
+
+
+async def test_public_owner_requires_independent_recovery_secret(managed):
+    owner = str(uuid4())
+    secret = 'original-recovery-secret-' + 'a' * 32
+    acquired = await managed.acquire(owner, 'sensevoice', 'zh', secret)
+    backend = managed.backend
+    public = await managed.status('sensevoice', 'zh')
+    assert public['owner'] == owner
+    assert secret not in repr(public) and secret not in repr(acquired)
+    assert managed.recovery_digest != secret
+    for wrong in ('different-recovery-secret-' + 'b' * 32, '无效凭据' * 16):
+        with pytest.raises(DomainError, match='invalid_managed_recovery') as error:
+            await managed.acquire(public['owner'], 'sensevoice', 'zh', wrong)
+        assert error.value.status_code == 403
+    recovered = await managed.acquire(owner, 'sensevoice', 'en', secret)
+    assert recovered['token'] == acquired['token'] and managed.backend is backend
+    await managed.release(owner, acquired['token'])
+    assert managed.recovery_digest is None
+    new = await managed.acquire(owner, 'sensevoice', 'zh', 'next-secret-' + 'c' * 32)
+    assert new['token'] != acquired['token']
+    with pytest.raises(DomainError, match='invalid_managed_recovery'):
+        await managed.acquire(owner, 'sensevoice', 'zh', secret)
+
+
+async def test_managed_upload_read_is_bounded_before_decode(managed, monkeypatch):
+    from spacemit_ai_gateway.domains.asr import api
+    from spacemit_ai_gateway.app.settings import Settings
+    from spacemit_ai_gateway.common.errors import RequestTooLargeError
+    settings = Settings(limits={'max_upload_bytes': 16})
+    monkeypatch.setattr(api, 'get_settings', lambda: settings)
+    class File:
+        async def read(self, size=-1):
+            assert size == 17, '整读上传会在拒绝前分配无界内存'
+            return b'x' * size
+    with pytest.raises(RequestTooLargeError):
+        await api.managed_recognize(File(), uuid4(), 'token', 'zh', managed.service)

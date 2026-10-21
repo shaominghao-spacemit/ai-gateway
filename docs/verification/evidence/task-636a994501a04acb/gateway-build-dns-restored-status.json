@@ -1,0 +1,135 @@
+{
+  "attempts": [
+    {
+      "attempt_id": "att-0cfa6a8777704a89ac549949f3713069",
+      "board_id": "K3DEB1",
+      "created_at": "2026-10-21T03:39:02.277131+00:00",
+      "error": null,
+      "fence": 413,
+      "finished_at": "2026-10-21T03:40:52.719960+00:00",
+      "request_id": "req-8ab0de76b0164772b92a723748f9b0e0",
+      "started_at": "2026-10-21T03:39:09.826175+00:00",
+      "status": "completed"
+    }
+  ],
+  "events": [
+    {
+      "created_at": "2026-10-21T03:40:49.834141+00:00",
+      "event_seq": 226180,
+      "event_type": "artifact_published",
+      "payload": {
+        "artifact_id": "gateway-0cfa6a877770",
+        "files": [
+          {
+            "board_id": "K3DEB1",
+            "location": "board",
+            "name": "spacemit-ai-gateway.deb",
+            "remote_path": "/home/bianbu/bibit-build/artifacts/gateway-0cfa6a877770/spacemit-ai-gateway.deb",
+            "sha256": "b3f40283f4168886d44cee48c01af7f22ad336583a0f834900c054f428fd2e10",
+            "size": 134612024
+          },
+          {
+            "board_id": "K3DEB1",
+            "location": "board",
+            "name": "test-device-lifecycle.py",
+            "remote_path": "/home/bianbu/bibit-build/artifacts/gateway-0cfa6a877770/test-device-lifecycle.py",
+            "sha256": "07615bc9c5586a22b7a7cf1ebc986f1b9128e01b17162bc662843ced32c748d0",
+            "size": 76665
+          }
+        ],
+        "path": "/home/shaominghao/.local/state/bibit-dev/artifacts/gateway-0cfa6a877770"
+      }
+    },
+    {
+      "created_at": "2026-10-21T03:40:52.722338+00:00",
+      "event_seq": 226183,
+      "event_type": "finished",
+      "payload": {
+        "response": {
+          "attempt_id": "att-0cfa6a8777704a89ac549949f3713069",
+          "board_id": "K3DEB1",
+          "boot_id": "db9ec2a8-e6a9-4649-b087-2c65fe3a825a",
+          "detail": {
+            "cleanup_errors": []
+          },
+          "fence": 413,
+          "ok": true,
+          "operation_seq": 21,
+          "processes": [
+            {
+              "cgroup_unit": "bibit-step-att-0cfa6a8777704a89ac549949f3713069-10.service",
+              "command": [
+                "python3",
+                "/run/gateway-dns-att-0cfa6a8777704a89ac549949f3713069.py",
+                "watch",
+                "/run/gateway-dns-att-0cfa6a8777704a89ac549949f3713069.sock",
+                "att-0cfa6a8777704a89ac549949f3713069"
+              ],
+              "observed": {
+                "active": "inactive",
+                "empty": true,
+                "exists": false,
+                "sub": "dead"
+              },
+              "operation_seq": 10,
+              "pid": 3344612,
+              "process_id": "proc-10",
+              "started_at": 1792553991.4977741,
+              "status": "stopped"
+            },
+            {
+              "cgroup_unit": "bibit-step-att-0cfa6a8777704a89ac549949f3713069-3.service",
+              "command": [
+                "sh",
+                "scripts/build-deb.sh"
+              ],
+              "observed": {
+                "active": "inactive",
+                "empty": true,
+                "exists": false,
+                "sub": "dead"
+              },
+              "operation_seq": 3,
+              "pid": 3343792,
+              "process_id": "proc-3",
+              "started_at": 1792553953.2815163,
+              "status": "stopped"
+            }
+          ],
+          "protocol": 1,
+          "safe_to_release": true,
+          "services": [],
+          "status": "clean"
+        },
+        "status": "completed"
+      }
+    }
+  ],
+  "occupancy": [],
+  "request": {
+    "cancel_reason": null,
+    "cancel_requested": false,
+    "capabilities": [
+      "build",
+      "riscv64"
+    ],
+    "created_at": "2026-10-21T03:38:27.205280+00:00",
+    "devices": [],
+    "enqueue_seq": 1232,
+    "idempotency_key": "build-gateway-d6f17bd5904df1c21b88e15a512273b6b1ab4f4cfb37cffb9dbc566a942d5f79-gateway-mr7-dns-restore-K3DEB1",
+    "input_digest": "d6f17bd5904df1c21b88e15a512273b6b1ab4f4cfb37cffb9dbc566a942d5f79",
+    "metadata": {
+      "agent": "gateway-mr7-dns-restore",
+      "board": "K3DEB1",
+      "branch": "fix/gateway-mr7-complete",
+      "git_head": "e4e28ce528fccc3cfebc26a8498a021c1ff5af4b",
+      "snapshot": "/home/shaominghao/.local/state/bibit-dev/snapshots/snapshot-d6f17bd5904df1c21b88e15a512273b6b1ab4f4cfb37cffb9dbc566a942d5f79.tar"
+    },
+    "recipe": "gateway",
+    "release_requested": false,
+    "request_id": "req-8ab0de76b0164772b92a723748f9b0e0",
+    "status": "completed",
+    "updated_at": "2026-10-21T03:40:52.719960+00:00",
+    "workspace": "/home/shaominghao/CodeSpace/bibit-workspace/.integration-worktrees/gateway-mr7-complete-fixes"
+  }
+}

@@ -17,6 +17,35 @@ for path in app.glob('runtime-*'):
         shutil.rmtree(path)
 PY
         if [ "$1" = purge ]; then
+            # 恢复源与活迁移状态分离，保留权限回滚资料但不污染 purge 后的新装。
+            /usr/bin/python3 - <<'PYBACKUP'
+import os
+from pathlib import Path
+import tempfile
+etc = Path('/etc/spacemit-ai-gateway')
+names = [
+    'legacy-base.yaml', 'legacy-effective-base.yaml', 'legacy-context.json',
+    'legacy-storage-acl.jsonl', 'legacy-credentials.env', 'legacy-environment',
+    'spacemit-ai-gateway-legacy-runtime-user.conf',
+    'spacemit-ai-gateway-frontend-legacy-runtime-user.conf',
+]
+sources = [etc / name for name in names if (etc / name).exists() or (etc / name).is_symlink()]
+if any(path.is_symlink() or not path.is_file() for path in sources):
+    raise SystemExit('Migration recovery source is not a regular file')
+if sources:
+    backups = etc / 'migration-backups'
+    if backups.is_symlink():
+        raise SystemExit('Migration backup directory must not be a symlink')
+    backups.mkdir(mode=0o700, exist_ok=True)
+    backups.chmod(0o700)
+    destination = Path(tempfile.mkdtemp(prefix='purge-', dir=backups))
+    for path in sources:
+        path.chmod(0o600)
+        os.rename(path, destination / path.name)
+for pattern in ('.legacy-storage-migrated', '.legacy-assets-migrated', '.legacy-admin-storage-*'):
+    for path in etc.glob(pattern):
+        path.unlink()
+PYBACKUP
             rm -f /etc/spacemit-ai-gateway/credentials.env /etc/spacemit-ai-gateway/.legacy-migrated \
               /etc/spacemit-ai-gateway/voice-api-key \
               /etc/tmpfiles.d/spacemit-ai-gateway-voice-access.conf
@@ -31,13 +60,6 @@ PYCONFIG
             rm -f /etc/systemd/system/spacemit-ai-gateway.service.d/00-legacy-runtime.conf \
               /etc/systemd/system/spacemit-ai-gateway-frontend.service.d/00-legacy-runtime.conf \
               /etc/systemd/system/spacemit-ai-gateway-frontend.service.d/legacy-listener.conf
-            rm -rf /etc/spacemit-ai-gateway/legacy-base.yaml \
-              /etc/spacemit-ai-gateway/legacy-effective-base.yaml \
-              /etc/spacemit-ai-gateway/legacy-context.json \
-              /etc/spacemit-ai-gateway/legacy-storage-acl.jsonl \
-              /etc/spacemit-ai-gateway/legacy-credentials.env \
-              /etc/spacemit-ai-gateway/spacemit-ai-gateway-legacy-runtime-user.conf \
-              /etc/spacemit-ai-gateway/spacemit-ai-gateway-frontend-legacy-runtime-user.conf
             rmdir /etc/systemd/system/spacemit-ai-gateway.service.d \
               /etc/systemd/system/spacemit-ai-gateway-frontend.service.d 2>/dev/null || true
             systemctl daemon-reload >/dev/null 2>&1 || true

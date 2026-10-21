@@ -1,7 +1,7 @@
 # 托管 ASR 接口与验收
 
-本接口协议版本为 1，供 Voice 独占使用 Gateway 托管的 SenseVoice 或 Qwen3。
-`asr.managed.enabled` 默认 `false`，新增字段不改变原 ASR 配置含义；旧 LLM/Embed 路径及鉴权不变。
+本接口协议版本为 2，供 Voice 独占使用 Gateway 托管的 SenseVoice 或 Qwen3。
+`asr.managed.enabled` 默认 `false`，新增字段不改变原 ASR 配置含义；旧 LLM/Embed 路径不变；启用鉴权时数据查询 GET/HEAD 同样要求凭据。
 所有 managed 请求，包括 GET，都执行 Gateway 既有 API key / IP 白名单鉴权。
 
 ## 接口
@@ -9,7 +9,7 @@
 | 请求 | 参数 | 成功响应 |
 | --- | --- | --- |
 | `GET /v1/asr/managed/status` | query `model`、`language` | 状态对象 |
-| `POST /v1/asr/managed/acquire` | JSON `{owner,model,language}` | 状态对象及随机 `token` |
+| `POST /v1/asr/managed/acquire` | JSON `{owner,model,language,recovery_secret}` | 状态对象及随机 `token` |
 | `POST /v1/asr/managed/release` | JSON `{owner,token}` | `{"released":true}` |
 | `POST /v1/asr/managed/recognize` | multipart `file,owner,token,language` | `{"text":"..."}` |
 
@@ -21,7 +21,7 @@
 
 ```json
 {
-  "protocol_version": 1,
+  "protocol_version": 2,
   "instance_id": "每个 Gateway 进程随机 UUID",
   "model": "qwen3_asr_0.6b",
   "languages": ["zh", "en"],
@@ -77,8 +77,11 @@ HTTP 断连、超时、健康失败、端口失联都不能证明资源释放。
 acquire 加载任务在 HTTP 取消后继续收尾，随后只清理该次未交付的精确 session；
 清理仍须等待真实子进程退出。HTTP disconnect 在等待加载期间主动检测。
 如果响应已经发出但在网络中丢失，现有契约没有客户端确认，服务端无法证明 token 已接收；
-相同 owner/model 可以重试 acquire，返回原 token，不重载模型、不接管其他 owner。
-客户端应保留同一实例 UUID 完成恢复并 release。另一个 UUID 即使持同一 API key 也不能释放。
+相同 owner/model 且恢复秘密匹配时可以重试 acquire，返回原 token，不重载模型、不接管其他 owner。
+`recovery_secret` 必填，长度 32–128 字符；Voice 用 `getrandom` 生成独立的 32 字节随机值并编码为 64 位十六进制。
+同一客户端在初次 acquire、丢响应恢复及 shutdown 重试中保留同一秘密，不从公开 owner 派生。
+Gateway 只保存 SHA256 摘要并恒时比对；status 和错误响应不返回秘密、摘要或 token。
+复制 owner 配错误秘密返回 403；缺失或长度非法返回 422。协议 v1 客户端不兼容，必须配套升级 Voice。
 
 旧生产 ASR 首次实际加载也强制竞争同一 engine 锁，即使 managed 未启用；
 目录不存在时尝试安全初始化，权限不足、不安全路径或锁忙明确失败。
@@ -327,3 +330,5 @@ SenseVoice 正在推理时仍检查 worker 进程状态；单次无响应超过 
 - SenseVoice health 超时只停止探针等待，已发出的管道交换继续持锁消费迟到回复；release 在进程组退出后收集交换任务。
 - 完整管理员 unit 的非 root UID 使用独立存储授权迁移标记，旧固定服务 UID 标记不会跳过补授权；EnvironmentFile 按 systemd 语法读取，不能当 shell 解引号。
 - 故障取证不能用 CPU 忙或请求未返回替代推理阶段。厂商 HTTP slot 接口无响应时，只能用已拥有引擎的真实算子派发入口及停止证据；此证据不声明算术指令 PC。
+
+上传在 multipart 解析前按实际累计请求体字节限制（含表单封装），不相信 Content-Length；超过 `limits.max_upload_bytes` 返回 413。managed 文件解码前再进行有界读取。

@@ -6,6 +6,7 @@ import atexit
 import errno
 import fcntl
 import hmac
+import hashlib
 import os
 import secrets
 import socket
@@ -235,6 +236,7 @@ class ManagedAsr:
         self.backend = None
         self.owner = self.token = self.model = None
         self.delivered_token = None
+        self.recovery_digest = None
         self.selected: list[str] = []
         self.fd: int | None = None
         self.closing = False
@@ -309,13 +311,13 @@ class ManagedAsr:
                     reason = "ready" if ready else "backend_unhealthy"
             if reason and reason != "ready":
                 state = "blocked"
-            return dict(protocol_version=1, instance_id=instance_id(), model=model,
+            return dict(protocol_version=2, instance_id=instance_id(), model=model,
                         languages=selected, assets_ready=assets, ready=ready,
                         owner=self.owner, resource_state=state, reason=reason or "available")
 
-    async def acquire(self, owner: str, model: str, language: str):
+    async def acquire(self, owner: str, model: str, language: str, recovery_secret: str):
         # 从 HTTP 生命周期中摘出加载任务；断连不能丢失半初始化子进程。
-        task = self._tracked(self._acquire(owner, model, language), self.operations)
+        task = self._tracked(self._acquire(owner, model, language, recovery_secret), self.operations)
         try:
             result = await asyncio.shield(task)
             async with self.service._load_lock:
@@ -364,7 +366,13 @@ class ManagedAsr:
                     continue  # 保留锁并重试，客户端从未收到可用于 release 的令牌。
                 return
 
-    async def _acquire(self, owner, model, language):
+    async def _acquire(self, owner, model, language, recovery_secret):
+        if not isinstance(recovery_secret, str) or not 32 <= len(recovery_secret) <= 128:
+            raise conflict("invalid_managed_recovery", 422)
+        try:
+            recovery_digest = hashlib.sha256(recovery_secret.encode()).digest()
+        except UnicodeEncodeError:
+            raise conflict("invalid_managed_recovery", 422) from None
         try:
             selected = languages(language)
         except ValueError as exc:
@@ -379,6 +387,8 @@ class ManagedAsr:
                 if (self.owner != owner or self.model != model
                         or self.closing or self.failed):
                     raise conflict("managed_session_already_owned")
+                if not hmac.compare_digest(self.recovery_digest or b"", recovery_digest):
+                    raise conflict("invalid_managed_recovery", 403)
             else:
                 _, reason = await self._preflight(model, selected)
                 if reason:
@@ -389,6 +399,7 @@ class ManagedAsr:
                     raise conflict(lock_reason(exc)) from exc
                 self.owner, self.model, self.selected = owner, model, selected
                 self.token = secrets.token_urlsafe(32)
+                self.recovery_digest = recovery_digest
                 self.closing = self.failed = False
                 try:
                     # 在锁内再次检查不协作的旧调用者，且不走旧 load/unload/default 路径。
@@ -485,6 +496,7 @@ class ManagedAsr:
         self.fd = self.backend = self.owner = self.token = self.model = None
         self.selected = []
         self.delivered_token = None
+        self.recovery_digest = None
         self.closing = self.failed = False
         self.release_task = None
         if self.cleanup_task is not None and self.cleanup_task is not asyncio.current_task():

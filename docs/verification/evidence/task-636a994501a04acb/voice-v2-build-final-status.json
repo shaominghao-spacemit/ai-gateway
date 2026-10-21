@@ -1,0 +1,171 @@
+{
+  "attempts": [
+    {
+      "attempt_id": "att-9af2c213f341425bac8d0a675ab18656",
+      "board_id": "K3DEB1-3",
+      "created_at": "2026-10-21T02:57:26.583674+00:00",
+      "error": null,
+      "fence": 361,
+      "finished_at": "2026-10-21T02:59:21.918297+00:00",
+      "request_id": "req-a10684785b2b4e4f9500d016e8bd43f8",
+      "started_at": "2026-10-21T02:57:30.099576+00:00",
+      "status": "completed"
+    }
+  ],
+  "events": [
+    {
+      "created_at": "2026-10-21T02:59:21.141371+00:00",
+      "event_seq": 225485,
+      "event_type": "artifact_published",
+      "payload": {
+        "artifact_id": "voice-9af2c213f341",
+        "files": [
+          {
+            "board_id": "K3DEB1-3",
+            "location": "board",
+            "name": "bibit-voice.deb",
+            "remote_path": "/home/bianbu/bibit-build/artifacts/voice-9af2c213f341/bibit-voice.deb",
+            "sha256": "731e7614ab1e79b9eb38a4ff754dddb84e2b31f678eb1ae52c7b275e7a650451",
+            "size": 347224
+          },
+          {
+            "board_id": "K3DEB1-3",
+            "location": "board",
+            "name": "libsherpa-onnx-c-api.deb",
+            "remote_path": "/home/bianbu/bibit-build/artifacts/voice-9af2c213f341/libsherpa-onnx-c-api.deb",
+            "sha256": "a37b90845088dd905d0298ddd11efda4a7325930e0fc8a02776eea55678318a7",
+            "size": 1514786
+          }
+        ],
+        "path": "/home/shaominghao/.local/state/bibit-dev/artifacts/voice-9af2c213f341"
+      }
+    },
+    {
+      "created_at": "2026-10-21T02:59:21.923774+00:00",
+      "event_seq": 225488,
+      "event_type": "finished",
+      "payload": {
+        "response": {
+          "attempt_id": "att-9af2c213f341425bac8d0a675ab18656",
+          "board_id": "K3DEB1-3",
+          "boot_id": "dcfb87c5-9867-4733-8a15-9c96235069d4",
+          "detail": {
+            "cleanup_errors": []
+          },
+          "fence": 361,
+          "ok": true,
+          "operation_seq": 35,
+          "processes": [
+            {
+              "cgroup_unit": "bibit-step-att-9af2c213f341425bac8d0a675ab18656-29.service",
+              "command": [
+                "sh",
+                "-c",
+                "want=bibit-voice\nfound=''\nfor f in ../*.deb; do\n  [ -f \"$f\" ] || continue\n  [ \"$(dpkg-deb -f \"$f\" Package 2>/dev/null || true)\" = \"$want\" ] || continue\n  found=\"$f\"\ndone\nif [ -z \"$found\" ]; then echo \"没有产出 $want 的 .deb\" >&2; exit 1; fi\ncp -f \"$found\" bibit-voice.deb\necho \"deb: $found -> bibit-voice.deb\"\n"
+              ],
+              "observed": {
+                "active": "inactive",
+                "empty": true,
+                "exists": false,
+                "sub": "dead"
+              },
+              "operation_seq": 29,
+              "pid": 109160,
+              "process_id": "proc-29",
+              "started_at": 1792551556.0757134,
+              "status": "stopped"
+            },
+            {
+              "cgroup_unit": "bibit-step-att-9af2c213f341425bac8d0a675ab18656-3.service",
+              "command": [
+                "sh",
+                "-c",
+                "rm -f ../*.deb ../*.buildinfo ../*.changes"
+              ],
+              "observed": {
+                "active": "inactive",
+                "empty": true,
+                "exists": false,
+                "sub": "dead"
+              },
+              "operation_seq": 3,
+              "pid": 0,
+              "process_id": "proc-3",
+              "started_at": 1792551451.9114125,
+              "status": "stopped"
+            },
+            {
+              "cgroup_unit": "bibit-step-att-9af2c213f341425bac8d0a675ab18656-32.service",
+              "command": [
+                "sh",
+                "-c",
+                "want=libsherpa-onnx-c-api\nfound=''\nfor f in ../*.deb; do\n  [ -f \"$f\" ] || continue\n  [ \"$(dpkg-deb -f \"$f\" Package 2>/dev/null || true)\" = \"$want\" ] || continue\n  found=\"$f\"\ndone\nif [ -z \"$found\" ]; then echo \"没有产出 $want 的 .deb\" >&2; exit 1; fi\ncp -f \"$found\" libsherpa-onnx-c-api.deb\necho \"deb: $found -> libsherpa-onnx-c-api.deb\"\n"
+              ],
+              "observed": {
+                "active": "inactive",
+                "empty": true,
+                "exists": false,
+                "sub": "dead"
+              },
+              "operation_seq": 32,
+              "pid": 109271,
+              "process_id": "proc-32",
+              "started_at": 1792551557.6003244,
+              "status": "stopped"
+            },
+            {
+              "cgroup_unit": "bibit-step-att-9af2c213f341425bac8d0a675ab18656-6.service",
+              "command": [
+                "sh",
+                "-c",
+                "dpkg-buildpackage -b -uc -us"
+              ],
+              "observed": {
+                "active": "inactive",
+                "empty": true,
+                "exists": false,
+                "sub": "dead"
+              },
+              "operation_seq": 6,
+              "pid": 104361,
+              "process_id": "proc-6",
+              "started_at": 1792551453.445583,
+              "status": "stopped"
+            }
+          ],
+          "protocol": 1,
+          "safe_to_release": true,
+          "services": [],
+          "status": "clean"
+        },
+        "status": "completed"
+      }
+    }
+  ],
+  "occupancy": [],
+  "request": {
+    "cancel_reason": null,
+    "cancel_requested": false,
+    "capabilities": [
+      "build",
+      "riscv64"
+    ],
+    "created_at": "2026-10-21T02:57:26.474391+00:00",
+    "devices": [],
+    "enqueue_seq": 1226,
+    "idempotency_key": "build-voice-a0aabf2c984ab845daba014b21adf40bb53fc4fd9ea1cdf60250f6d8ba5446cc-mr7-complete-fixes-any",
+    "input_digest": "a0aabf2c984ab845daba014b21adf40bb53fc4fd9ea1cdf60250f6d8ba5446cc",
+    "metadata": {
+      "agent": "mr7-complete-fixes",
+      "branch": "fix/voice-gateway-session",
+      "git_head": "0ce3cfec7e0242947cc862836c79563e3a12abbc",
+      "snapshot": "/home/shaominghao/.local/state/bibit-dev/snapshots/snapshot-a0aabf2c984ab845daba014b21adf40bb53fc4fd9ea1cdf60250f6d8ba5446cc.tar"
+    },
+    "recipe": "voice",
+    "release_requested": false,
+    "request_id": "req-a10684785b2b4e4f9500d016e8bd43f8",
+    "status": "completed",
+    "updated_at": "2026-10-21T02:59:21.918297+00:00",
+    "workspace": "/home/shaominghao/CodeSpace/bibit-workspace/.integration-worktrees/voice-gateway-session-fixes"
+  }
+}

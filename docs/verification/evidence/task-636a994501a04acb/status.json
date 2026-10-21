@@ -1,0 +1,43 @@
+{
+  "scope": "MR7全问题修复",
+  "source_base": "e4e28ce528fccc3cfebc26a8498a021c1ff5af4b",
+  "voice_base": "0ce3cfec7e0242947cc862836c79563e3a12abbc",
+  "host": {
+    "py312": "876 passed, 33 skipped, 83 subtests passed",
+    "py310_compat": "876 passed, 33 skipped, 83 subtests passed",
+    "voice": "224 tests OK"
+  },
+  "review": "专项复审未发现可证明P0/P1，板端覆盖待处理",
+  "voice_artifact": "voice-175edc917a83",
+  "voice_deb_sha256": "e7809ad3d4a9456883c9a72b04a84f1873f4573648aea6ad4be4c3af28354f8c",
+  "gateway_build_requests": [
+    "req-efc6c6af066e4f40815ad86f368e1347",
+    "req-573bf8a7b31941018a2710bd2767f264",
+    "req-7f2c9e3827494426a9430753712f91fd"
+  ],
+  "gateway_build": "completed_dns_restored",
+  "machine": "pass_final_pair_lifecycle_http_fault_restored_and_released",
+  "commit": "not_executed_at_evidence_capture",
+  "local_main": "not_executed",
+  "remote_push": "not_executed",
+  "gateway_artifact": "gateway-0cfa6a877770",
+  "gateway_deb_sha256": "b3f40283f4168886d44cee48c01af7f22ad336583a0f834900c054f428fd2e10",
+  "gateway_build_request": "req-8ab0de76b0164772b92a723748f9b0e0",
+  "hosts_restored": true,
+  "hosts_original_sha256": "c3f23ac51edb32f59bc0d275f42f984e1c72f4b71cc1db5f4f65e1a3a4f864ea",
+  "voice_pair_build_request": "req-57723ef9a5114e94abd5241735ffb25d",
+  "joint_request": "req-b033bf3d430642a3b23b74fec1145538",
+  "gateway_snapshot_current_package_paths_equal": 191,
+  "joint_result": "ok",
+  "joint_restored": true,
+  "voice_current_tests": "225 tests OK",
+  "voice_offline_rollback_build_request": "req-24e01e87de6f462782e07d034caf05c1",
+  "gateway_full_lifecycle_request": "req-718395c4495749d7bd163a17564f901a",
+  "supplemental_probe_initial": "failed_AttributeError_in_probe_restored_true_not_production_failure",
+  "gateway_full_lifecycle_result": "ok",
+  "http_boundary_result": "ok",
+  "final_joint_fault_result": "ok",
+  "restored": true,
+  "lease_request_status": "completed",
+  "occupancy": []
+}

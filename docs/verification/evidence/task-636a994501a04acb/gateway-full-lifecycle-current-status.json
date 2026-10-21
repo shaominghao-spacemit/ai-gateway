@@ -1,0 +1,217 @@
+{
+  "attempts": [
+    {
+      "attempt_id": "att-84df44a26f15444d8f97590be8f2b098",
+      "board_id": "K3DEB1",
+      "created_at": "2026-10-21T04:08:06.667977+00:00",
+      "error": null,
+      "fence": 418,
+      "finished_at": null,
+      "request_id": "req-718395c4495749d7bd163a17564f901a",
+      "started_at": "2026-10-21T04:08:13.306283+00:00",
+      "status": "running"
+    }
+  ],
+  "events": [
+    {
+      "created_at": "2026-10-21T04:12:40.078444+00:00",
+      "event_seq": 226827,
+      "event_type": "gateway_lifecycle_result",
+      "payload": {
+        "artifact_id": "gateway-0cfa6a877770",
+        "attempt_id": "att-84df44a26f15444d8f97590be8f2b098",
+        "backup": "/home/bianbu/bibit-build/evidence/att-84df44a26f15444d8f97590be8f2b098/gateway-backup-81wm4sdp",
+        "checks": [
+          "original-listener-auth-contract-snapshotted",
+          "external-model-databases-snapshotted",
+          "preflight-backup-rollback-deb",
+          "postinst-configure-reentry",
+          "original-listener-auth-contract-preserved",
+          "legacy-root-identity-preserved",
+          "r2-program-readonly-data-sqlite-writable",
+          "legacy-intent-original-config-real-llm-embedding-upgrade",
+          "real-vad-load-inference",
+          "administrator-auth-config-environment-dropin-data",
+          "r6-failed-model-degrades-health",
+          "real-vad-load-inference",
+          "r6-real-model-reload-health-recovered",
+          "real-vad-load-inference",
+          "health-failure-kill-auto-recovery",
+          "upgrade-preserves-administrator-state",
+          "remove-preserves-administrator-state",
+          "real-vad-load-inference",
+          "reinstall-purge-preserves-dropin-and-data",
+          "external-model-databases-restored",
+          "external-model-databases-restored",
+          "original-package-files-data-services-restored",
+          "mr7-admin-unit-stopped-environment-upgrade",
+          "mr7-admin-existing-markers-systemd-environment-upgrade",
+          "external-model-databases-restored",
+          "external-model-databases-restored",
+          "original-package-files-data-services-restored",
+          "protected-package-inventory-unchanged"
+        ],
+        "legacy_intent": {
+          "client_version": "0.1.56",
+          "comparison": {
+            "browser": {
+              "cosine": 1.0,
+              "dimension": 1024,
+              "max_abs_error": 0.0
+            },
+            "question": {
+              "cosine": 1.0000000000000002,
+              "dimension": 1024,
+              "max_abs_error": 0.0
+            },
+            "version": {
+              "cosine": 1.0000000000000002,
+              "dimension": 1024,
+              "max_abs_error": 0.0
+            }
+          },
+          "result": "ok",
+          "source_and_configuration_unchanged": true
+        },
+        "log": "/home/bianbu/bibit-build/evidence/att-84df44a26f15444d8f97590be8f2b098/gateway-backup-81wm4sdp-summary.json",
+        "managed_asr": {
+          "contract": "managed-asr-v1",
+          "models": [],
+          "result": "not_run",
+          "t18": {
+            "reason": "both_models_not_verified",
+            "result": "not_passed"
+          }
+        },
+        "request_id": "req-718395c4495749d7bd163a17564f901a",
+        "restored": true,
+        "result": "ok",
+        "sha256": "b3f40283f4168886d44cee48c01af7f22ad336583a0f834900c054f428fd2e10"
+      }
+    },
+    {
+      "created_at": "2026-10-21T04:12:40.335003+00:00",
+      "event_seq": 226828,
+      "event_type": "deployed",
+      "payload": {
+        "artifact_id": "gateway-0cfa6a877770",
+        "attempt_id": "att-84df44a26f15444d8f97590be8f2b098",
+        "backup": "/home/bianbu/bibit-build/evidence/att-84df44a26f15444d8f97590be8f2b098/gateway-backup-81wm4sdp",
+        "checks": [
+          "original-listener-auth-contract-snapshotted",
+          "external-model-databases-snapshotted",
+          "preflight-backup-rollback-deb",
+          "postinst-configure-reentry",
+          "original-listener-auth-contract-preserved",
+          "legacy-root-identity-preserved",
+          "r2-program-readonly-data-sqlite-writable",
+          "legacy-intent-original-config-real-llm-embedding-upgrade",
+          "real-vad-load-inference",
+          "administrator-auth-config-environment-dropin-data",
+          "r6-failed-model-degrades-health",
+          "real-vad-load-inference",
+          "r6-real-model-reload-health-recovered",
+          "real-vad-load-inference",
+          "health-failure-kill-auto-recovery",
+          "upgrade-preserves-administrator-state",
+          "remove-preserves-administrator-state",
+          "real-vad-load-inference",
+          "reinstall-purge-preserves-dropin-and-data",
+          "external-model-databases-restored",
+          "external-model-databases-restored",
+          "original-package-files-data-services-restored",
+          "mr7-admin-unit-stopped-environment-upgrade",
+          "mr7-admin-existing-markers-systemd-environment-upgrade",
+          "external-model-databases-restored",
+          "external-model-databases-restored",
+          "original-package-files-data-services-restored",
+          "protected-package-inventory-unchanged"
+        ],
+        "evidence_dir": "/home/shaominghao/.local/state/bibit-dev/evidence/req-718395c4495749d7bd163a17564f901a",
+        "legacy_intent": {
+          "client_version": "0.1.56",
+          "comparison": {
+            "browser": {
+              "cosine": 1.0,
+              "dimension": 1024,
+              "max_abs_error": 0.0
+            },
+            "question": {
+              "cosine": 1.0000000000000002,
+              "dimension": 1024,
+              "max_abs_error": 0.0
+            },
+            "version": {
+              "cosine": 1.0000000000000002,
+              "dimension": 1024,
+              "max_abs_error": 0.0
+            }
+          },
+          "result": "ok",
+          "source_and_configuration_unchanged": true
+        },
+        "log": "/home/bianbu/bibit-build/evidence/att-84df44a26f15444d8f97590be8f2b098/gateway-backup-81wm4sdp-summary.json",
+        "log_local": "/home/shaominghao/.local/state/bibit-dev/evidence/req-718395c4495749d7bd163a17564f901a/gateway-backup-81wm4sdp-summary.json",
+        "managed_asr": {
+          "contract": "managed-asr-v1",
+          "models": [],
+          "result": "not_run",
+          "t18": {
+            "reason": "both_models_not_verified",
+            "result": "not_passed"
+          }
+        },
+        "request_id": "req-718395c4495749d7bd163a17564f901a",
+        "restored": true,
+        "result": "ok",
+        "sha256": "b3f40283f4168886d44cee48c01af7f22ad336583a0f834900c054f428fd2e10"
+      }
+    },
+    {
+      "created_at": "2026-10-21T04:12:40.338296+00:00",
+      "event_seq": 226829,
+      "event_type": "holding",
+      "payload": {
+        "hint": "人在看的时候用 bibit-dev verify release req-718395c4495749d7bd163a17564f901a 提前交还",
+        "hold_seconds": 2400,
+        "hold_until": "2026-10-21T04:52:40.338271+00:00"
+      }
+    }
+  ],
+  "occupancy": [
+    {
+      "acquired_at": "2026-10-21T04:08:06.667977+00:00",
+      "attempt_id": "att-84df44a26f15444d8f97590be8f2b098",
+      "fence": 418,
+      "resource_id": "K3DEB1",
+      "resource_type": "board"
+    }
+  ],
+  "request": {
+    "cancel_reason": null,
+    "cancel_requested": false,
+    "capabilities": [
+      "riscv64"
+    ],
+    "created_at": "2026-10-21T04:06:52.378762+00:00",
+    "devices": [],
+    "enqueue_seq": 1243,
+    "idempotency_key": "accept-gateway-0cfa6a877770-gateway-mr7-full-audit-K3DEB1",
+    "input_digest": "b3f40283f4168886d44cee48c01af7f22ad336583a0f834900c054f428fd2e10",
+    "metadata": {
+      "agent": "gateway-mr7-full-audit",
+      "artifact": "gateway-0cfa6a877770",
+      "board": "K3DEB1",
+      "hold_seconds": 2400,
+      "source_branch": "fix/gateway-mr7-complete",
+      "source_head": "e4e28ce528fccc3cfebc26a8498a021c1ff5af4b",
+      "source_workspace": "/home/shaominghao/CodeSpace/bibit-workspace/.integration-worktrees/gateway-mr7-complete-fixes"
+    },
+    "recipe": "gateway-accept",
+    "release_requested": false,
+    "request_id": "req-718395c4495749d7bd163a17564f901a",
+    "status": "running",
+    "updated_at": "2026-10-21T04:08:13.306283+00:00",
+    "workspace": "artifact:gateway-0cfa6a877770"
+  }
+}

@@ -7,6 +7,7 @@ DomainError 家族定义迁移到 `common/errors.py`；本模块只负责把 HTT
 import logging
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
@@ -43,6 +44,7 @@ def setup_exception_handlers(app: FastAPI) -> None:
                 },
             )
 
+    @app.exception_handler(RequestValidationError)
     @app.exception_handler(ValidationError)
     async def _(request: Request, exc: ValidationError):
         return JSONResponse(
@@ -51,7 +53,7 @@ def setup_exception_handlers(app: FastAPI) -> None:
                 "error": "validation_error",
                 "message": "Request validation failed",
                 "retriable": False,
-                "details": exc.errors(),
+                "details": [{key: error[key] for key in ("loc", "type", "msg")} for error in exc.errors()],
             },
         )
 

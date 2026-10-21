@@ -64,7 +64,7 @@ app = FastAPI(
         "- VLM `/v1/vlm/*`  视觉语言模型（OpenAI 兼容）\n"
         "- Vision `/v1/vision/*`  视觉推理（HTTP + WS 流式）\n\n"
 
-        "鉴权：启用时写请求携带 `X-API-Key` 或 `Authorization: Bearer`；ASR/TTS WS 使用 `/stream/session` 签发的 `session_id`，浏览器 WS 也可通过子协议携带密钥。"
+        "鉴权：启用时数据查询及写请求携带 `X-API-Key` 或 `Authorization: Bearer`；ASR/TTS WS 使用 `/stream/session` 签发的 `session_id`，浏览器 WS 也可通过子协议携带密钥。"
     ),
     lifespan=lifespan,
     docs_url="/docs",

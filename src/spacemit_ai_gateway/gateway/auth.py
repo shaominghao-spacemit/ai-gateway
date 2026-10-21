@@ -12,7 +12,9 @@ from typing import Optional
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import APIKeyHeader
+from starlette.datastructures import Headers
 from starlette.requests import HTTPConnection
+from starlette.formparsers import MultiPartException
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -167,6 +169,14 @@ async def _has_stream_session(connection: HTTPConnection) -> bool:
     return store is not None and await store.get(session_id) is not None
 
 
+def _public_read(path: str) -> bool:
+    return path in {"/healthz", "/docs", "/docs/oauth2-redirect", "/redoc", "/openapi.json",
+                    "/v1/errors"} or path in {
+        f"/v1/{domain}/healthz" for domain in
+        ("asr", "tts", "vad", "llm", "embed", "rerank", "vlm", "vision")
+    }
+
+
 class GatewayAuthMiddleware:
     def __init__(self, app: ASGIApp):
         self.app = app
@@ -186,7 +196,7 @@ class GatewayAuthMiddleware:
             send = send_with_protocol
         settings = get_settings()
         if not settings.auth.enabled or scope.get("method") == "OPTIONS":
-            await self.app(scope, receive, send)
+            await self._bounded_upload(scope, receive, send, settings.limits.max_upload_bytes)
             return
 
         connection = HTTPConnection(scope)
@@ -196,6 +206,7 @@ class GatewayAuthMiddleware:
             error = 403, {"error": "forbidden", "message": "Client IP not allowed"}
         elif not whitelisted and (
             scope["type"] == "websocket" or scope["method"] not in {"GET", "HEAD"}
+            or not _public_read(scope.get("path", ""))
         ):
             if scope["type"] != "websocket" or not await _has_stream_session(connection):
                 error = _key_error(_connection_key(connection), settings, scope.get("path", ""))
@@ -207,4 +218,46 @@ class GatewayAuthMiddleware:
             else:
                 await JSONResponse(status_code=error[0], content=error[1])(scope, receive, send)
             return
-        await self.app(scope, receive, send)
+        await self._bounded_upload(scope, receive, send, settings.limits.max_upload_bytes)
+
+    async def _bounded_upload(self, scope, receive, send, max_bytes):
+        headers = Headers(scope=scope)
+        if scope["type"] != "http" or not headers.get("content-type", "").lower().startswith("multipart/form-data"):
+            await self.app(scope, receive, send)
+            return
+        consumed = 0
+        exceeded = False
+        replied = False
+
+        async def limited_receive():
+            nonlocal consumed, exceeded
+            if exceeded:
+                raise MultiPartException("upload exceeds configured limit")
+            message = await receive()
+            if message["type"] == "http.request":
+                consumed += len(message.get("body", b""))
+                if consumed > max_bytes:
+                    exceeded = True
+                    raise MultiPartException("upload exceeds configured limit")
+            return message
+
+        async def limited_send(message):
+            nonlocal replied
+            if exceeded:
+                # FastAPI 的 multipart 异常可能转换成400；统一保持真正的413。
+                if not replied:
+                    replied = True
+                    await JSONResponse(status_code=413, content={
+                        "error": "request_too_large", "message": "upload exceeds configured limit"
+                    }, headers={key.decode("latin-1"): value.decode("latin-1")
+                                for key, value in message.get("headers", [])
+                                if key.lower() not in {b"content-length", b"content-type"}})(scope, receive, send)
+                return
+            await send(message)
+
+        try:
+            await self.app(scope, limited_receive, limited_send)
+        except MultiPartException:
+            if not exceeded:
+                raise
+            await limited_send({"type": "http.response.start"})

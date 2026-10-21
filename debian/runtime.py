@@ -517,7 +517,32 @@ def migrate_legacy(root=Path("/")):
     context = json.loads(context_path.read_text()) if context_path.exists() else {"home": "/root", "environment": {}}
     administrator_unit = root / "etc/systemd/system/spacemit-ai-gateway.service"
     user = context.get("user") or "root"
-    administrator_uid = (int(user) if user.isdigit() else pwd.getpwnam(user).pw_uid) if administrator_unit.is_file() else 0
+    administrator_user = administrator_unit.is_file()
+    # 与 preinst 相同的 drop-in 优先级，只看最后生效的 User，排除精确旧生成文件。
+    directories = [root / directory for directory in ('etc/systemd/system', 'run/systemd/system',
+                   'usr/local/lib/systemd/system', 'usr/lib/systemd/system', 'lib/systemd/system')]
+    dropins = {}
+    for scope in ('service.d', 'spacemit-.service.d', 'spacemit-ai-.service.d',
+                  'spacemit-ai-gateway.service.d'):
+        for directory in reversed(directories):
+            dropins.update({path.name: path for path in (directory / scope).glob('*.conf')})
+    for name in sorted(dropins):
+        path = dropins[name]
+        if not path.is_file():
+            continue
+        text = path.read_text()
+        section = ''
+        for line in text.replace("\\\n", ' ').splitlines():
+            line = line.strip()
+            if line.startswith('['):
+                section = line
+            key, separator, value = line.partition('=')
+            if section == '[Service]' and separator and key.strip() == 'User':
+                values = shlex.split(value, comments=False)
+                selected_user = values[0] if values else 'root'
+                administrator_user = (administrator_unit.is_file() or
+                                      (selected_user == user and not pattern.fullmatch(text)))
+    administrator_uid = (int(user) if user.isdigit() else pwd.getpwnam(user).pw_uid) if administrator_user else 0
     administrator_storage_marker = etc / f".legacy-admin-storage-{administrator_uid}"
     dropin = root / "etc/systemd/system/spacemit-ai-gateway.service.d/runtime-user.conf"
     old_dropin = dropin if dropin.is_file() else etc / "spacemit-ai-gateway-legacy-runtime-user.conf"
@@ -661,6 +686,9 @@ def migrate_legacy(root=Path("/")):
             if root == Path("/"):
                 os.chown(current, 0, grp.getgrnam("spacemit-ai-gateway").gr_gid)
             current.chmod(0o640)
+        if administrator_uid and (not context.get("environment", {}).get("SPACEMIT_AI_GATEWAY_CONFIG")
+                                  or context["environment"]["SPACEMIT_AI_GATEWAY_CONFIG"] == "/etc/spacemit-ai-gateway/base.yaml"):
+            grant_storage_access(root, [("/etc/spacemit-ai-gateway/base.yaml", False)], uid=administrator_uid)
         for environment, text in pending.items():
             private_write(environment, text)
         # 已有凭据的鉴权叶子不被覆盖；只补旧 unit 的环境及物化路径。
@@ -685,21 +713,34 @@ def migrate_legacy(root=Path("/")):
             directory = root / f"etc/systemd/system/{name}.service.d"
             directory.mkdir(parents=True, exist_ok=True)
             path = directory / "00-legacy-runtime.conf"
-            if not path.exists() and not path.is_symlink():
-                content = (
-                    "[Service]\nUser=root\nGroup=\nEnvironment=\n"
-                    "Environment=PATH=/opt/spacemit-ai-gateway/venv/bin:/usr/local/bin:/usr/bin:/bin\n"
-                    "Environment=SPACEMIT_AI_GATEWAY_CONFIG=/etc/spacemit-ai-gateway/base.yaml\n"
-                    "UMask=0022\nNoNewPrivileges=false\nProtectSystem=false\n"
-                    "StateDirectory=\n"
+            previous = directory / "runtime-user.conf"
+            if not previous.is_file():
+                previous = etc / f"{name}-legacy-runtime-user.conf"
+            generated = pattern.fullmatch(previous.read_text()) if previous.is_file() else None
+            previous_user = generated[1] if generated else user
+            was_root = previous_user in {"root", "0"}
+            content = (
+                ("[Service]\nUser=root\nGroup=\n" if was_root else "[Service]\n")
+                + "Environment=\n"
+                "Environment=PATH=/opt/spacemit-ai-gateway/venv/bin:/usr/local/bin:/usr/bin:/bin\n"
+                "Environment=SPACEMIT_AI_GATEWAY_CONFIG=/etc/spacemit-ai-gateway/base.yaml\n"
+                + ("UMask=0022\nNoNewPrivileges=false\nProtectSystem=false\nStateDirectory=\n"
+                   if was_root else "")
+            )
+            if name == "spacemit-ai-gateway":
+                content += "WorkingDirectory=/opt/spacemit-ai-gateway\n"
+            else:
+                content += (
+                    "ExecStart=\nExecStart=/usr/bin/python3 "
+                    "/opt/spacemit-ai-gateway/frontend/serve.py 8326 --bind ::\n"
                 )
-                if name == "spacemit-ai-gateway":
-                    content += "WorkingDirectory=/opt/spacemit-ai-gateway\n"
-                else:
-                    content += (
-                        "ExecStart=\nExecStart=/usr/bin/python3 "
-                        "/opt/spacemit-ai-gateway/frontend/serve.py 8326 --bind ::\n"
-                    )
+            previous_generated = content.replace("[Service]\n", "[Service]\nUser=root\nGroup=\n", 1).replace(
+                "Environment=SPACEMIT_AI_GATEWAY_CONFIG=/etc/spacemit-ai-gateway/base.yaml\n",
+                "Environment=SPACEMIT_AI_GATEWAY_CONFIG=/etc/spacemit-ai-gateway/base.yaml\n"
+                "UMask=0022\nNoNewPrivileges=false\nProtectSystem=false\nStateDirectory=\n", 1)
+            if (not path.exists() and not path.is_symlink()) or (
+                    not was_root and path.is_file() and not path.is_symlink()
+                    and path.read_text() == previous_generated):
                 private_write(path, content)
         if (name == "spacemit-ai-gateway" and legacy_install and unit.is_file()
                 and context.get("environment", {}).get("SPACEMIT_AI_GATEWAY_CONFIG")

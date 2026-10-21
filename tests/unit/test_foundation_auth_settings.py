@@ -464,3 +464,81 @@ ws.onerror = event => { console.error(event.message); clearTimeout(timer); proce
             server.should_exit = True
             thread.join(timeout=5)
             assert not thread.is_alive(), "test server failed to stop"
+
+
+@pytest.mark.parametrize('method', ['GET', 'HEAD'])
+def test_data_reads_require_key_but_probes_remain_public(monkeypatch, method):
+    app = make_app(monkeypatch)
+    @app.api_route('/v1/asr/jobs/private', methods=['GET', 'HEAD'])
+    async def job():
+        app.state.calls += 1
+        return {'text': 'private transcript'}
+    with TestClient(app) as client:
+        assert client.request(method, '/v1/asr/jobs/private').status_code == 401
+        assert client.request(method, '/v1/asr/jobs/private', headers={'X-API-Key': 'bad'}).status_code == 403
+        assert app.state.calls == 0
+        assert client.request(method, '/v1/asr/jobs/private', headers={'X-API-Key': 'device-key'}).status_code == 200
+        assert client.get('/healthz').status_code == 200
+
+
+@pytest.mark.parametrize('content_length', [None, '1', '999999'])
+async def test_chunked_upload_rejected_before_parser_unbounded_spooling(monkeypatch, content_length):
+    import httpx
+    from fastapi import File, UploadFile
+    from spacemit_ai_gateway.gateway.auth import GatewayAuthMiddleware
+    import starlette.formparsers as parser
+    from starlette.middleware.cors import CORSMiddleware
+    files = []
+    original_spool = parser.SpooledTemporaryFile
+    def spool(*args, **kwargs):
+        file = original_spool(*args, **kwargs)
+        files.append(file)
+        return file
+    monkeypatch.setattr(parser, 'SpooledTemporaryFile', spool)
+    settings = Settings(limits={'max_upload_bytes': 256})
+    monkeypatch.setattr('spacemit_ai_gateway.gateway.auth.get_settings', lambda: settings)
+    app = FastAPI()
+    app.add_middleware(GatewayAuthMiddleware)
+    app.add_middleware(CORSMiddleware, allow_origins=['http://console'])
+    app.state.calls = 0
+    @app.post('/upload')
+    async def upload(file: UploadFile = File(...)):
+        app.state.calls += 1
+        return {'size': len(await file.read())}
+    received = []
+    async def chunks():
+        for chunk in [b'--b\r\nContent-Disposition: form-data; name="file"; filename="a"\r\n\r\n',
+                      b'a' * 256, b'a' * 256, b'\r\n--b--\r\n']:
+            received.append(chunk)
+            yield chunk
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url='http://test') as client:
+        headers = {'Content-Type': 'multipart/form-data; boundary=b', 'Origin': 'http://console'}
+        if content_length is not None:
+            headers['Content-Length'] = content_length
+        response = await client.post('/upload', content=chunks(), headers=headers)
+        assert response.status_code == 413
+        assert response.headers['access-control-allow-origin'] == 'http://console'
+    assert app.state.calls == 0
+    assert len(received) == 2
+    assert files and all(file.closed for file in files)
+
+
+@pytest.mark.parametrize('limit_offset, expected', [(0, 200), (-1, 413)])
+async def test_multipart_actual_envelope_limit_and_normal_upload(monkeypatch, limit_offset, expected):
+    import httpx
+    from fastapi import File, UploadFile
+    body = b'--b\r\nContent-Disposition: form-data; name="file"; filename="a"\r\n\r\nhello\r\n--b--\r\n'
+    settings = Settings(limits={'max_upload_bytes': len(body) + limit_offset})
+    monkeypatch.setattr('spacemit_ai_gateway.gateway.auth.get_settings', lambda: settings)
+    app = FastAPI()
+    from spacemit_ai_gateway.gateway.auth import GatewayAuthMiddleware
+    app.add_middleware(GatewayAuthMiddleware)
+    @app.post('/upload')
+    async def upload(file: UploadFile = File(...)):
+        return {'size': len(await file.read())}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url='http://test') as client:
+        result = await client.post('/upload', content=body,
+                                   headers={'Content-Type': 'multipart/form-data; boundary=b'})
+        assert result.status_code == expected
+        if expected == 200:
+            assert result.json() == {'size': 5}

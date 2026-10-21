@@ -3,7 +3,7 @@
 from typing import List, Optional, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 
 
 class RecognizeParams(BaseModel):
@@ -194,6 +194,7 @@ ManagedModel = Literal["sensevoice", "qwen3_asr_0.6b"]
 
 
 class ManagedAcquireRequest(BaseModel):
+    recovery_secret: SecretStr = Field(min_length=32, max_length=128)
     owner: UUID
     model: ManagedModel
     language: str
@@ -205,7 +206,7 @@ class ManagedReleaseRequest(BaseModel):
 
 
 class ManagedStatus(BaseModel):
-    protocol_version: Literal[1] = 1
+    protocol_version: Literal[2] = 2
     instance_id: str
     model: ManagedModel
     languages: list[str]

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from urllib.parse import urlsplit
 from datetime import datetime, timezone
@@ -193,7 +194,6 @@ class AsrService:
         if self.managed.active:
             from .managed import conflict
             raise conflict("managed_asr_owned")
-        self._legacy_asr_used = True
         existing = self._backends.get(name)
         if (
             existing is not None
@@ -215,33 +215,42 @@ class AsrService:
                 details={"available": self._allowed_backends},
             )
 
-        if not self._injected_backends and self._legacy_fd is None:
-            from .managed import conflict, foreign_processes, lock_reason, register_participant, take_lock
-            try:
-                register_participant(self._config.managed.lock_path)
-                self._participant_error = None
-                self._legacy_fd = take_lock(self._config.managed.lock_path)
-            except OSError as exc:
-                raise conflict(lock_reason(exc)) from exc
-            # SDK 的线程/扩展寿命无法由 unload 确认；即使加载失败也留锁至进程退出。
-        if not self._injected_backends:
-            from .managed import conflict, foreign_processes
-            port = self._config.managed.qwen3.port
-            endpoint = urlsplit(self._config.qwen3.endpoint)
-            if (name == 'qwen3-asr' and endpoint.hostname in {'127.0.0.1', 'localhost', '::1'}
-                    and (endpoint.port or (443 if endpoint.scheme == 'https' else 80)) == port):
-                port = None  # 旧 Qwen 适配器连接管理员维护的外部服务，不启动或接管它。
-            reason = await asyncio.to_thread(
-                foreign_processes, None, self._config.managed.lock_path, port)
-            if reason:
-                raise conflict(reason)
-        # 先下载（失败直接报下载错误码），再卸载旧模型，避免下载失败后什么都没加载
-        if self.downloads.supports(name) and sdk_installed("spacemit_asr"):
-            await self.downloads.ensure(name)
-        await self._shutdown_loaded_backends()
-        cfg_updates = {"backend": name}
-        cfg = self._config.model_copy(update=cfg_updates)
-        logger.info("loading ASR backend '%s' on demand", name)
+        new_legacy_fd = False
+        try:
+            if not self._injected_backends and self._legacy_fd is None:
+                from .managed import conflict, lock_reason, register_participant, take_lock
+                try:
+                    register_participant(self._config.managed.lock_path)
+                    self._participant_error = None
+                    self._legacy_fd = take_lock(self._config.managed.lock_path)
+                    new_legacy_fd = True
+                except OSError as exc:
+                    raise conflict(lock_reason(exc)) from exc
+            if not self._injected_backends:
+                from .managed import conflict, foreign_processes
+                port = self._config.managed.qwen3.port
+                endpoint = urlsplit(self._config.qwen3.endpoint)
+                if (name == 'qwen3-asr' and endpoint.hostname in {'127.0.0.1', 'localhost', '::1'}
+                        and (endpoint.port or (443 if endpoint.scheme == 'https' else 80)) == port):
+                    port = None  # 旧 Qwen 适配器连接管理员维护的外部服务，不启动或接管它。
+                reason = await asyncio.to_thread(
+                    foreign_processes, None, self._config.managed.lock_path, port)
+                if reason:
+                    raise conflict(reason)
+            # 先下载，再卸载旧模型，避免下载失败后什么都没加载。
+            if self.downloads.supports(name) and sdk_installed("spacemit_asr"):
+                await self.downloads.ensure(name)
+            await self._shutdown_loaded_backends()
+            cfg_updates = {"backend": name}
+            cfg = self._config.model_copy(update=cfg_updates)
+            logger.info("loading ASR backend '%s' on demand", name)
+        except BaseException:
+            if new_legacy_fd and not self._legacy_asr_used:
+                os.close(self._legacy_fd)
+                self._legacy_fd = None
+            raise
+        # SDK 构造可能留下线程/扩展；从此即使构造或 warmup 失败也留锁至进程退出。
+        self._legacy_asr_used = True
         backend = cls(cfg)
         try:
             await backend.warmup()

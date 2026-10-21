@@ -2145,3 +2145,113 @@ def test_stopped_admin_json_environment_survives_migration(intent_upgrade, monke
     assert values['HOME'] == home
     assert json.loads(values['SPACEMIT_AI_GATEWAY_AUTH__API_KEYS']) == ['admin-key']
     assert environment.read_bytes() == original
+
+
+@pytest.mark.parametrize('service', SERVICES)
+def test_generated_nonroot_upgrade_never_promotes_to_root(legacy_tree, service):
+    root, etc, _ = legacy_tree
+    write_file(root / f'etc/systemd/system/{service}.service.d/runtime-user.conf', GENERATED_DROPIN)
+    write_file(etc / 'legacy-context.json', json.dumps({
+        'user': '1000', 'home': '/home/bianbu', 'environment': {}}))
+    runtime.migrate_legacy(root=root)
+    content = (root / f'etc/systemd/system/{service}.service.d/00-legacy-runtime.conf').read_text()
+    assert 'User=root' not in content
+    assert 'NoNewPrivileges=false' not in content and 'ProtectSystem=false' not in content
+
+
+@pytest.mark.parametrize('identity_source', ['unit', 'dropin'])
+def test_complete_admin_etc_config_acl_survives_atomic_migration(tmp_path, identity_source):
+    import os
+    uid = 60002
+    etc = tmp_path / 'etc/spacemit-ai-gateway'
+    current = write_file(etc / 'base.yaml', yaml.safe_dump({'app': {'host': '127.0.0.1'}}, sort_keys=False))
+    inode = current.stat().st_ino
+    write_file(tmp_path / 'usr/share/spacemit-ai-gateway/base.yaml', (ROOT / 'configs/base.yaml').read_text())
+    write_file(etc / 'legacy-effective-base.yaml', current.read_text())
+    write_file(etc / 'legacy-base.yaml', current.read_text())
+    write_file(etc / 'legacy-context.json', json.dumps({
+        'user': str(uid), 'home': '/srv/operator',
+        'environment': {'SPACEMIT_AI_GATEWAY_CONFIG': '/etc/spacemit-ai-gateway/base.yaml'}}))
+    unit = tmp_path / ('etc/systemd/system/spacemit-ai-gateway.service' if identity_source == 'unit'
+                       else 'etc/systemd/system/spacemit-ai-gateway.service.d/zz-admin.conf')
+    write_file(unit, '[Service]\nUser=60002\nEnvironment=SPACEMIT_AI_GATEWAY_CONFIG=/etc/spacemit-ai-gateway/base.yaml\n')
+    current.chmod(0o640)
+    runtime.grant_storage_access(tmp_path, [('/etc/spacemit-ai-gateway/base.yaml', False)], uid=uid)
+    assert any(tag == 2 and identifier == uid and bits == 4
+               for tag, bits, identifier in __import__('struct').iter_unpack('<HHI', os.getxattr(current, 'system.posix_acl_access')[4:]))
+    runtime.migrate_legacy(tmp_path)
+    assert current.stat().st_ino != inode
+    assert any(tag == 2 and identifier == uid and bits == 4
+               for tag, bits, identifier in __import__('struct').iter_unpack('<HHI', os.getxattr(current, 'system.posix_acl_access')[4:]))
+
+
+def test_purge_archives_migration_recovery_and_reinstall_is_fresh(tmp_path):
+    etc = tmp_path / 'etc/spacemit-ai-gateway'
+    originals = {name: write_file(etc / name, content).read_bytes()
+                 for name, content in {
+                     'legacy-base.yaml': 'app: {host: 0.0.0.0}\n',
+                     'legacy-effective-base.yaml': 'app: {host: 0.0.0.0}\n',
+                     'legacy-context.json': '{"home":"/root","environment":{}}',
+                     'legacy-storage-acl.jsonl': '{"path":"/srv/model","mode":448}\n',
+                     'legacy-environment': 'ADMIN=keep\n'}.items()}
+    write_file(etc / '.legacy-storage-migrated', '')
+    source = (ROOT / 'debian/spacemit-ai-gateway.postrm').read_text()
+    source = re.sub(r'/(?:etc|opt)(?=/)', lambda m: str(tmp_path) + m[0], source)
+    source = source.replace('systemctl daemon-reload >/dev/null 2>&1 || true', ':')
+    script = write_file(tmp_path / 'postrm.sh', source)
+    subprocess.run(['sh', str(script), 'purge'], check=True)
+    archives = list((etc / 'migration-backups').iterdir())
+    assert len(archives) == 1
+    archive = archives[0]
+    assert stat.S_IMODE(archive.stat().st_mode) == 0o700
+    for name, content in originals.items():
+        assert (archive / name).read_bytes() == content
+        assert stat.S_IMODE((archive / name).stat().st_mode) == 0o600
+        assert not (etc / name).exists()
+    runtime.migrate_legacy(tmp_path)
+    assert 'SPACEMIT_AI_GATEWAY_AUTH__ENABLED=true' in (etc / 'credentials.env').read_text()
+    assert not list((tmp_path / 'etc/systemd/system').glob('*.service.d/00-legacy-runtime.conf'))
+    subprocess.run(['sh', str(script), 'purge'], check=True)
+    assert all((archive / name).read_bytes() == content for name, content in originals.items())
+
+
+@pytest.mark.parametrize('service', SERVICES)
+def test_nonroot_upgrade_repairs_only_exact_old_generated_dropin(legacy_tree, service):
+    root, etc, _ = legacy_tree
+    write_file(etc / f'{service}-legacy-runtime-user.conf', GENERATED_DROPIN)
+    write_file(etc / 'legacy-context.json', json.dumps({
+        'user': '1000', 'home': '/home/bianbu', 'environment': {}}))
+    runtime.migrate_legacy(root=root)
+    path = root / f'etc/systemd/system/{service}.service.d/00-legacy-runtime.conf'
+    expected = path.read_text()
+    previous = expected.replace('[Service]\n', '[Service]\nUser=root\nGroup=\n', 1).replace(
+        'Environment=SPACEMIT_AI_GATEWAY_CONFIG=/etc/spacemit-ai-gateway/base.yaml\n',
+        'Environment=SPACEMIT_AI_GATEWAY_CONFIG=/etc/spacemit-ai-gateway/base.yaml\n'
+        'UMask=0022\nNoNewPrivileges=false\nProtectSystem=false\nStateDirectory=\n', 1)
+    path.write_text(previous)
+    runtime.migrate_legacy(root=root)
+    assert path.read_text() == expected
+    path.write_text(previous + '# administrator override\n')
+    runtime.migrate_legacy(root=root)
+    assert path.read_text() == previous + '# administrator override\n'
+
+
+@pytest.mark.parametrize('admin_name, generated_name, expect_admin', [
+    ('zz-admin.conf', 'runtime-user.conf', True),
+    ('aa-admin.conf', 'runtime-user.conf', False),
+])
+def test_custom_uid_dropin_order_keeps_generated_account_migration(legacy_tree, monkeypatch, admin_name, generated_name, expect_admin):
+    monkeypatch.setattr(runtime, "grant_storage_access", lambda root, paths, **kwargs: None)
+    root, etc, _ = legacy_tree
+    directory = root / 'etc/systemd/system/spacemit-ai-gateway.service.d'
+    write_file(directory / generated_name, GENERATED_DROPIN)
+    write_file(directory / admin_name, '[Service]\nUser=60002\n')
+    user = '60002' if expect_admin else '1000'
+    if not expect_admin:
+        # 本机测试环境没有bianbu账户，context中有效numeric UID与生成文件模拟一致。
+        (directory / generated_name).write_text(GENERATED_DROPIN.replace('User=bianbu', 'User=1000'))
+    write_file(etc / 'legacy-context.json', json.dumps({'user': user, 'home': '/home/bianbu', 'environment': {}}))
+    runtime.migrate_legacy(root)
+    assert (etc / '.legacy-admin-storage-60002').exists() is expect_admin
+    generated = (directory / '00-legacy-runtime.conf').read_text()
+    assert 'User=root' not in generated and (directory / admin_name).read_text() == '[Service]\nUser=60002\n'

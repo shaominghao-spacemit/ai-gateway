@@ -1,0 +1,70 @@
+{
+  "result": "ok",
+  "restored": true,
+  "checks": [
+    "four-input-digests-and-both-model-cases",
+    "pre-mutation-package-file-acl-lock-preference-service-snapshot",
+    "managed-assets-generated-and-verified",
+    "managed-assets-generated-and-verified",
+    "managed-assets-generated-and-verified",
+    "mainpid-local-gateway-local-and-offline-both-real-models",
+    "voice-first-no-key",
+    "managed-assets-generated-and-verified",
+    "gateway-first-key-before-voice",
+    "voice-first-gateway-first-reinstall-remove",
+    "original-packages-key-lock-inode-preferences-system-user-services-restored"
+  ],
+  "sha256": "3a1cd907d57b3a23c96e70d0d9b6e92995421e23cd8557927c0c4fbba25fd802",
+  "voice_sha256": "3a1cd907d57b3a23c96e70d0d9b6e92995421e23cd8557927c0c4fbba25fd802",
+  "gateway_sha256": "b3f40283f4168886d44cee48c01af7f22ad336583a0f834900c054f428fd2e10",
+  "sherpa_sha256": "a37b90845088dd905d0298ddd11efda4a7325930e0fc8a02776eea55678318a7",
+  "managed_cases_sha256": "980df6db17d1084692d9d0b66b4a5db6f8435417da9e93f2a570bab33fdcc67a",
+  "cases_sha256": "980df6db17d1084692d9d0b66b4a5db6f8435417da9e93f2a570bab33fdcc67a",
+  "managed_asr": {
+    "contract": "managed-asr-v2",
+    "result": "ok",
+    "models": [
+      {
+        "model": "sensevoice",
+        "backend": "local",
+        "model_type": "sensevoice",
+        "audio_sha256": "a0253708ca95edcb5f36158de97f817adbd5daa7ff5e2a5fdd9d21375b2a9096",
+        "event_count": 4,
+        "result": "ok"
+      },
+      {
+        "model": "sensevoice",
+        "backend": "gateway",
+        "model_type": "sensevoice",
+        "audio_sha256": "a0253708ca95edcb5f36158de97f817adbd5daa7ff5e2a5fdd9d21375b2a9096",
+        "event_count": 4,
+        "result": "ok"
+      },
+      {
+        "model": "qwen3_asr_0.6b",
+        "backend": "local",
+        "model_type": "qwen3_asr_0.6b",
+        "audio_sha256": "a0253708ca95edcb5f36158de97f817adbd5daa7ff5e2a5fdd9d21375b2a9096",
+        "event_count": 4,
+        "result": "ok"
+      },
+      {
+        "model": "qwen3_asr_0.6b",
+        "backend": "gateway",
+        "model_type": "qwen3_asr_0.6b",
+        "audio_sha256": "a0253708ca95edcb5f36158de97f817adbd5daa7ff5e2a5fdd9d21375b2a9096",
+        "event_count": 4,
+        "result": "ok"
+      }
+    ],
+    "t18": {
+      "result": "ok",
+      "reason": "both_models_verified"
+    },
+    "main_pid": 3361488
+  },
+  "request_id": "req-b033bf3d430642a3b23b74fec1145538",
+  "attempt_id": "att-9f0a79cdae644320a1e77390ff4117cc",
+  "artifact_id": "voice-ab60fb7e4884",
+  "backup": "/var/tmp/voice-gateway-lifecycle-aochf87n"
+}

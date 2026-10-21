@@ -27,7 +27,7 @@ ssh -L 8326:127.0.0.1:8326 -L 18790:127.0.0.1:18790 <设备用户>@<设备IP>
 
 Deb 首次安装默认启用鉴权，设备密钥在 root 可读的 `/etc/spacemit-ai-gateway/credentials.env`，升级时保留。管理员读取后在 console 顶部输入 API key；HTTP 支持 `X-API-Key` 或 Bearer，WS 使用子协议传递凭据，不将 key 放入 URL。若开放远程监听，应先配置受信的 TLS 反向代理和访问策略。console 仍使用外部 CDN 加载 React/Babel，因此完整离线浏览器环境暂不可用。
 
-`apt remove` 清理包的程序、unit 和标记过的运行环境，保留 `/etc` 配置、设备凭据、模型与数据库。`apt purge` 进一步删除 conffile 和包生成的凭据，保留模型数据、管理员 drop-in 和迁移备份；模型需管理员明确删除。升级前的旧虚拟环境保存在 `venv.legacy`，不会递归删除 `/opt` 下的管理员文件。
+`apt remove` 清理包的程序、unit 和标记过的运行环境，保留 `/etc` 配置、设备凭据、模型与数据库。`apt purge` 进一步删除 conffile 和包生成的凭据，保留模型数据、管理员 drop-in；迁移恢复源及原 ACL 日志归档至 root 私有的 `/etc/spacemit-ai-gateway/migration-backups/purge-*/`（目录 0700、文件 0600），不会被重新安装误用；模型需管理员明确删除。升级前的旧虚拟环境保存在 `venv.legacy`，不会递归删除 `/opt` 下的管理员文件。
 
 旧 `/opt/spacemit-ai-gateway/configs/base.yaml` 会备份到 `/etc/spacemit-ai-gateway/legacy-base.yaml`；新 `/etc` 配置仍为包默认值时迁移旧参数并收紧监听地址，已有管理员 `/etc` 配置保留。旧安装器精确生成的 `runtime-user.conf` 备份后移除，自定义 drop-in 保留；管理员若自行覆盖 `User`、监听地址或鉴权，需核对实际生效值。旧用户缓存不自动复制到新 HOME，避免大模型重复占盘和归属变更；可在停服务后有选择地复制，并设置为服务账户可读写。
 
@@ -267,7 +267,7 @@ curl -s 'localhost:18790/v1/errors/recent?domain=llm&model=qwen3-0.6b-q4_0&limit
 
 ### 鉴权与 IP 白名单
 
-源码默认不启用鉴权或 IP 白名单，Deb 安装默认启用 API key。若设置 IP 白名单，名单外一律拒绝，名单内可免 key；因此不要将不受信的网络加入名单。白名单文件修改后自动热加载，无需重启：
+源码默认不启用鉴权或 IP 白名单，Deb 安装默认启用 API key。启用鉴权时，数据查询 GET/HEAD（包括异步任务结果、合成音频、模型与故障记录）和写请求均需要凭据；只豁免健康探针及静态 API 文档，OPTIONS 仍供 CORS 预检。若设置 IP 白名单，名单外一律拒绝，名单内可免 key；因此不要将不受信的网络加入名单。白名单文件修改后自动热加载，无需重启：
 
 ```yaml
 # configs/base.yaml

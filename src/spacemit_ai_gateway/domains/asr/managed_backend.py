@@ -155,16 +155,15 @@ class ManagedBackend:
                 state = await asyncio.to_thread(psutil.Process(self.pid).status)
                 if state in {psutil.STATUS_STOPPED, psutil.STATUS_TRACING_STOP, psutil.STATUS_ZOMBIE}:
                     return False
-                if self.health_task is not None and not self.health_task.done():
-                    return False
-                if self.io_lock.locked():
-                    # 复用启动预算作为 worker 无响应健康窗口，不取消仍持锁的推理。
-                    return (self.identity == (self.model, self.selected)
-                            and self.exchange_started is not None
-                            and time.monotonic() - self.exchange_started < self.config.managed.startup_timeout)
-                # 超时/断连只结束探针等待，已发送交换仍持锁消费回复，避免下一次识别串包。
-                self.health_task = asyncio.create_task(self._exchange({'op': 'health'}))
-                self.health_task.add_done_callback(lambda task: task.exception() if not task.cancelled() else None)
+                if self.health_task is None or self.health_task.done():
+                    if self.io_lock.locked():
+                        # 复用启动预算作为 worker 无响应健康窗口，不取消仍持锁的推理。
+                        return (self.identity == (self.model, self.selected)
+                                and self.exchange_started is not None
+                                and time.monotonic() - self.exchange_started < self.config.managed.startup_timeout)
+                    self.health_task = asyncio.create_task(self._exchange({'op': 'health'}))
+                    self.health_task.add_done_callback(lambda task: task.exception() if not task.cancelled() else None)
+                # 并发调用共用探针；超时/断连后仍持锁消费回复，避免下一次识别串包。
                 reply = await asyncio.wait_for(asyncio.shield(self.health_task), 2)
                 return (reply.get('model'), reply.get('languages')) == (self.model, self.selected)
             # 端口健康不能证明是我们的子进程：核对 socket 归属及精确模型身份。

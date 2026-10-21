@@ -57,7 +57,7 @@ async def engine(tmp_path, monkeypatch):
 async def test_real_process_parameters_inference_and_cleanup(engine):
     managed, tmp_path = engine
     owner = str(uuid4())
-    acquired = await managed.acquire(owner, 'qwen3_asr_0.6b', 'zh,en')
+    acquired = await managed.acquire(owner, 'qwen3_asr_0.6b', 'zh,en', 'test-recovery-secret-' + 'x' * 32)
     backend = managed.backend
     pid, runtime = backend.pid, Path(backend.runtime_dir.name)
     assert Path(f'/proc/{pid}').exists()
@@ -88,7 +88,7 @@ async def test_real_start_failure_never_leaks_resource(engine, monkeypatch, fail
         monkeypatch.setenv('TEST_LLAMA_MODEL', 'another-model')
         managed.config.managed.startup_timeout = .3
     with pytest.raises(DomainError):
-        await managed.acquire(str(uuid4()), 'qwen3_asr_0.6b', 'zh,en')
+        await managed.acquire(str(uuid4()), 'qwen3_asr_0.6b', 'zh,en', 'test-recovery-secret-' + 'x' * 32)
     assert not managed.active and not list(tmp_path.glob('gateway-asr-*'))
     fd = take_lock(managed.config.managed.lock_path)
     os.close(fd)
@@ -99,7 +99,7 @@ async def test_real_slow_inference_disconnect_and_term_escalation(engine, monkey
     monkeypatch.setenv('TEST_LLAMA_DELAY', '.3')
     monkeypatch.setenv('TEST_LLAMA_IGNORE_TERM', '1')
     owner = str(uuid4())
-    acquired = await managed.acquire(owner, 'qwen3_asr_0.6b', 'zh,en')
+    acquired = await managed.acquire(owner, 'qwen3_asr_0.6b', 'zh,en', 'test-recovery-secret-' + 'x' * 32)
     pid = managed.backend.pid
     request = asyncio.create_task(managed.recognize(owner, acquired['token'], 'zh,en', b'\0\0'))
     for _ in range(100):
@@ -223,7 +223,7 @@ def test_participant_marker_requires_live_exclusive_flock(tmp_path):
 async def test_language_switch_preserves_child_and_updates_prompt(engine):
     managed, tmp_path = engine
     owner = str(uuid4())
-    acquired = await managed.acquire(owner, 'qwen3_asr_0.6b', 'zh,en')
+    acquired = await managed.acquire(owner, 'qwen3_asr_0.6b', 'zh,en', 'test-recovery-secret-' + 'x' * 32)
     pid = managed.backend.pid
     for language, prompt in [('en', 'language English<asr_text>'), ('zh', 'language Chinese<asr_text>')]:
         assert (await managed.status('qwen3_asr_0.6b', language))['ready']
@@ -286,7 +286,7 @@ async def test_release_terminates_stalled_inference_before_unlock(engine, monkey
     managed, tmp_path = engine
     monkeypatch.setenv('TEST_LLAMA_DELAY', '60')
     owner = str(uuid4())
-    acquired = await managed.acquire(owner, 'qwen3_asr_0.6b', 'zh')
+    acquired = await managed.acquire(owner, 'qwen3_asr_0.6b', 'zh', 'test-recovery-secret-' + 'x' * 32)
     backend = managed.backend
     pid = backend.pid
     request = asyncio.create_task(managed.recognize(owner, acquired['token'], 'zh', b'\0\0'))
@@ -365,7 +365,7 @@ async def test_sensevoice_health_timeout_preserves_pipe_and_shutdown_collects_ta
                 await probe
         assert backend.io_lock.locked()
         exchange = backend.health_task
-        assert not await backend.healthy()
+        assert await backend.healthy() is (outcome == 'reply' and interruption == 'timeout')
         assert backend.health_task is exchange
         if outcome == 'reply':
             assert await asyncio.wait_for(backend.recognize(b'\0\0', ['auto']), 4) == 'ok'

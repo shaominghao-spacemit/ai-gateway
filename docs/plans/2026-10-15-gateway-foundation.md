@@ -76,3 +76,62 @@
 2026-10-20 11:46 UTC 终态核查：同一新产物完整管理员生命周期再次通过（req-cac00e6291394af88246c83d578f171c），原 Intent 三条向量前后一致；保留此前单次向量失败。提交识别前预布防 GDB 仍未命中选定计算符号并超时，U3/U7 真机故障未通过。finally 恢复完成，平台已 completed、occupancy=[]、safe_to_release=true、cleanup_errors=[]。先定位真实调用链，不继续盲选符号；新修复未提交或更新 MR。证据与最新状态见 task-0a454fe6a6aa4051 的 pending 条目和 status.json。
 
 2026-10-20 12:05 UTC 收口：真实线程栈和反汇编确认旧基类派发入口只有 ret，改用实际在线权重打包入口同步断点；同 Deb 真实故障验证通过，4925 次 flock 观察未提前解锁，health 降级、release 有界、进程退出后锁可取并回到 idle。req-0ce67ce78362469fbeaf3a7ac4a21a9a 已 restored=true、completed、occupancy=[]、safe_to_release=true；完整管理员生命周期也通过。双版本宿主全量各836通过、33跳过、83子测试通过。生产不变；task-518f8fe89a974c52 接手现有 MR 分支交付，不改本地或远端 main。
+
+
+## 2026-10-21 MR !7 全问题修复接续
+
+本轮 Gateway 基线 `e4e28ce528fccc3cfebc26a8498a021c1ff5af4b`，任务 `task-636a994501a04acb`；
+配套 Voice 基线 `0ce3cfec7e0242947cc862836c79563e3a12abbc`，任务 `task-eb7bcab8202b42a0`。
+仅拥有两个隔离工作树；不修改共享主树、其他用户工作或已保存的历史验收证据。
+
+范围：管理员配置原子替换后补 ACL、旧非 root 身份不提升 root、恢复秘密防公开 owner 盗 token、
+并发健康探针复用、purge 私有归档恢复源、旧 ASR 构造前拒绝不污染 managed、GET 结果鉴权、
+multipart 实际流量限额及有界文件读取。协议升级为 v2，Voice v1 明确不兼容，不在释放本地资源后才发现。
+
+已加入专项回归并同步设备助手、fixture、接口文档；Voice 全宿主回归 223 项通过。
+Gateway 首轮864通过1失败：旧测试要求并发 probe 立即失败，与新健康语义相反；已同步为共享探针有界等待。
+加强 ACL 测试记录 inode 必须变化；基线执行确实失去 ACL，当前专项通过。
+尚未完成新配对包构建、独占板端双模型/安装回滚验收、最终审查及提交。旧产物的成功不能代替本轮。
+验收与最终结果统一记录 `docs/verification/pending/task-636a994501a04acb.md`。
+
+2026-10-21本轮收尾：全部已确认源码问题已补修，串行双Python全量各876通过/33跳过/83子测试，配对Voice224通过；第二轮专项复核无已确认P0/P1。Gateway三次候选构建均因公共PyPI TLS EOF失败，平台已安全清理。Voice最终新产物已完成构建，未配对部署、未提交/合入/推送；目标保持未完成。状态见task-636a994501a04acb。
+
+
+### 2026-10-21 DNS 独占恢复与候选构建
+
+用户已明确允许临时修正并恢复 DNS。平台请求 req-8ab0de76b0164772b92a723748f9b0e0，K3DEB1 独占 attempt att-0cfa6a8777704a89ac549949f3713069 / fence413。
+临时 hosts 使用151.101.0.223，同域名SNI、curl正常TLS校验HTTP200；未改Gateway公共依赖源或TLS校验。
+恢复守护进程由 BoardExecutor.start_process 登记，平台清理SIGTERM触发恢复原字节/模式/属主。构建 completed，safe_to_release=true、occupancy=[]。
+原hosts SHA256 c3f23ac51edb32f59bc0d275f42f984e1c72f4b71cc1db5f4f65e1a3a4f864ea；恢复默认DNS167.82.24.223。
+新Gateway artifact gateway-0cfa6a877770，deb SHA256 b3f40283f4168886d44cee48c01af7f22ad336583a0f834900c054f428fd2e10。
+联合验收平台要求两产物同构建板，原voice-9af2c213f341在K3DEB1-3，不能与K3DEB1产物直接配对；已在K3DEB1受控重建。同步修正Voice验收输出contract标签为managed-asr-v2（原仅标签陈旧），9项专项通过，最终配对请求req-57723ef9a5114e94abd5241735ffb25d。
+DNS工具仅保存在本任务evidence，不进入安装包；本机恢复自检通过。证据JSON中的平台租约token已脱敏。
+真机联合及完整安装回滚验收仍待执行，未提交/合入/推送。
+
+
+### 真机联合通过与回滚助手补修
+
+联合请求req-b033bf3d430642a3b23b74fec1145538已经completed，restored=true、occupancy=[]。
+配对voice-ab60fb7e4884 + gateway-0cfa6a877770：SenseVoice/Qwen3-ASR各local及gateway真人音频全部ok，MainPID稳定切换，安装先后/卸载/回滚通过；报告managed-asr-v2、t18.result=ok。
+旧Gateway0.0.17恢复在线pip耗时约4分钟后自行完成；没有执行第二次DNS写操作。补修Voice验收助手：在旧包配置前提取原运行环境，再PIP_NO_INDEX=1配置；新最小回归10项、全量225项通过，候选重新排队req-24e01e87de6f462782e07d034caf05c1。旧联合结果不证明这次新助手修改。
+第一次额外HTTP边界探针在配置完成后发生工具自身AttributeError（http函数名覆盖标准库模块），完整finally已restored=true，未记边界通过；已修正函数名/连接关闭并补wrapper自检。
+Gateway正式全生命周期新请求req-718395c4495749d7bd163a17564f901a排队中；边界及故障注入待持有独占租约时执行。
+
+
+### 正式安装生命周期与HTTP边界
+
+req-718395c4495749d7bd163a17564f901a / att-84df44a26f15444d8f97590be8f2b098：包内原生命周期脚本result=ok、restored=true，完整管理员User=bianbu配置ACL可读、升级/remove/purge/reinstall、VAD故障健康与旧包/外部数据库/权限恢复均通过。
+额外HTTP探针最初工具异常和CORS断言过严均保留失败记录，不计通过。精简边界回调第一次遗漏mutated标记，只恢复启停；已发现并立即使用该次原备份gateway-backup-39zei0cp执行完整restore（probe-full-restore.log），旧包0.0.17、外部数据库与原文件恢复成功后才重跑。未释放租约或把该次摘要当成实际完整恢复。
+修正后的独占HTTP探针gateway-http-boundary-device-fixed.log：result=ok、restored=true；匿名GET/HEAD数据401、有效key查询200/缺失job404、chunked2MiB超1.25MiB限额413且CORS保留、小文件进入字段校验422、无新增已删除临时文件FD。
+最终Voice候选voice-175edc917a83（含离线回滚助手）构建completed，deb SHA256 e7809ad3d4a9456883c9a72b04a84f1873f4573648aea6ad4be4c3af28354f8c。当前在同一holding租约上执行该候选完整双模型联合+GDB阻塞推理/并发健康/锁寿命验收；未以先前Voice候选替代。
+
+
+### 最终候选验收收口
+
+最终候选：gateway-0cfa6a877770（b3f40283f4168886d44cee48c01af7f22ad336583a0f834900c054f428fd2e10）、voice-175edc917a83（e7809ad3d4a9456883c9a72b04a84f1873f4573648aea6ad4be4c3af28354f8c）。
+req-718395c4495749d7bd163a17564f901a 已 completed、safe_to_release=true、occupancy=[]。
+最终配对完整联合 + 故障注入：result=ok、restored=true；双模型local/gateway真人音频与MainPID切换、协议v2恢复秘密拒盗/合法重试、4轮各8个并发健康请求全部ready（94–324ms）、GDB真实SpineGemmDispatchMMT4D::PackOnlineWeight断点验证，4929个alive_locked样本及退出后锁释放。
+最新Voice回滚助手从原备份恢复运行环境后PIP_NO_INDEX=1配置旧包，真实恢复成功，无第二次DNS修改。宿主机最新Voice225项通过；Gateway此前双Python串行876项证据不被旧候选代替。
+最终原hosts字节SHA、644/root:root恢复核验通过；原Gateway服务active；共享主树保持原状。没有永久发布包/apt/tag，也未推送或更新MR。
+已通过bibit-dev verify record记录3项，并保留完整失败工具尝试和人工完整恢复证据。
+原Gateway生命周期报告子段contract仍为旧报告标签managed-asr-v1，并不表示使用协议v1；实际接口status与acquire按v2校验，配对主报告managed-asr-v2。此次不为报告标签重新生成生产包，后续可单独整理报告schema。

@@ -752,7 +752,7 @@ with tempfile.TemporaryDirectory(prefix='lifecycle-write-', dir=data) as tempora
             verified = {item['model'] for item in self.managed_evidence['models'] if item['result'] == 'ok'}
             if verified == {'sensevoice', 'qwen3_asr_0.6b'}:
                 self.managed_evidence['t18'] = {'result': 'ok', 'reason': 'both_models_verified'}
-            self.checked('u4-managed-asr-v1-real-model-contract')
+            self.checked('u4-managed-asr-v2-real-model-contract')
         except Exception:
             self.managed_evidence['result'] = 'failed'
             raise
@@ -769,7 +769,7 @@ with tempfile.TemporaryDirectory(prefix='lifecycle-write-', dir=data) as tempora
             self.managed_evidence['t18'] = {'result': 'blocked', 'reason': before['reason']}
         require(before.get('reason') not in {'sensevoice_language_list_unsupported', 'unsupported_language'},
                 'managed language semantics unsupported; T18 not passed')
-        require(before.get('protocol_version') == 1 and before.get('model') == model
+        require(before.get('protocol_version') == 2 and before.get('model') == model
                 and before.get('languages') == language.split(',') and before.get('assets_ready') is True,
                 'managed exact target preflight failed')
         require(before.get('resource_state') == 'free' and before.get('owner') is None,
@@ -781,10 +781,11 @@ with tempfile.TemporaryDirectory(prefix='lifecycle-write-', dir=data) as tempora
                 and directory_stat.st_mode & 0o7777 == 0o2775
                 and lock_stat.st_uid == 0 and lock_stat.st_gid == shared_gid and lock_stat.st_mode & 0o777 == 0o660,
                 'managed shared lock ownership or modes mismatch')
-        # 无 token 时只允许精确 owner/model 重试找回；绝不据 API 故障推断资源释放。
+        # 无 token 时只允许精确 owner/model/恢复秘密找回；绝不据 API 故障推断资源释放。
         token = None
         already_released = False
-        acquire_body = {'owner': owner, 'model': model, 'language': language}
+        acquire_body = {'owner': owner, 'model': model, 'language': language,
+                        'recovery_secret': secrets.token_hex(32)}
         try:
             try:
                 acquired = api(endpoint + 'acquire', self.key, acquire_body, timeout=180)
@@ -796,6 +797,14 @@ with tempfile.TemporaryDirectory(prefix='lifecycle-write-', dir=data) as tempora
                     and acquired.get('model') == model and acquired.get('languages') == language.split(',')
                     and acquired.get('resource_state') == 'owned',
                     'managed acquisition identity failed')
+            code, _ = request(endpoint + 'acquire', self.key,
+                              dict(acquire_body, recovery_secret=secrets.token_hex(32)))
+            require(code == 403, 'public owner must not recover another client token')
+            recovered = api(endpoint + 'acquire', self.key, acquire_body, timeout=180)
+            require(recovered.get('token') == token, 'same recovery secret must recover original token')
+            visible = api(query, self.key)
+            require('token' not in visible and 'recovery_secret' not in visible
+                    and 'recovery_digest' not in visible, 'managed status exposes a session secret')
             require(self.health()['domains']['asr'].get('ready') is True,
                     'managed healthy backend missing from global health')
             for invalid_owner, invalid_token in ((str(uuid4()), token), (owner, 'invalid-token')):
@@ -1057,10 +1066,22 @@ with tempfile.TemporaryDirectory(prefix='lifecycle-write-', dir=data) as tempora
         self.preserved()
         self.restart()
         self.vad()
-        run('dpkg', '--force-depends', '--purge', PACKAGE, timeout=180)
+        self.purge_with_acl_recovery()
         self.preserved(purge=True)
         self.checked('reinstall-purge-preserves-dropin-and-data')
         self.check_admin_unit_upgrade()
+
+    def purge_with_acl_recovery(self):
+        self.restore_storage_acl()
+        archives = set((ETC / 'migration-backups').glob('purge-*'))
+        try:
+            run('dpkg', '--force-depends', '--purge', PACKAGE, timeout=180)
+        finally:
+            new_archives = set((ETC / 'migration-backups').glob('purge-*')) - archives
+            journals = [path / 'legacy-storage-acl.jsonl' for path in new_archives
+                        if (path / 'legacy-storage-acl.jsonl').is_file()]
+            require(len(journals) <= 1, 'ambiguous purge ACL recovery archive')
+            self.storage_acl_purge_archive = journals[0] if journals else None
 
     def check_admin_unit_upgrade(self):
         if not self.old_version:
@@ -1131,6 +1152,13 @@ with tempfile.TemporaryDirectory(prefix='lifecycle-write-', dir=data) as tempora
 
     def read_storage_acl_journal(self):
         path = ETC / 'legacy-storage-acl.jsonl'
+        archive = getattr(self, 'storage_acl_purge_archive', None)
+        if not path.exists() and archive is not None:
+            require(not archive.parent.is_symlink()
+                    and archive.parent.stat().st_uid == os.getuid()
+                    and stat.S_IMODE(archive.parent.stat().st_mode) == 0o700,
+                    'purge ACL recovery archive must remain private')
+            path = archive
         try:
             fd = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK)
         except FileNotFoundError:
@@ -1152,6 +1180,7 @@ with tempfile.TemporaryDirectory(prefix='lifecycle-write-', dir=data) as tempora
             os.fsync(stream.fileno())
 
     def snapshot_storage_acl(self):
+        self.storage_acl_purge_archive = None
         self.storage_acl_before = self.read_storage_acl_journal()
         self.private_acl_evidence('storage-acl-before.json', self.storage_acl_before)
 
@@ -1240,6 +1269,7 @@ with tempfile.TemporaryDirectory(prefix='lifecycle-write-', dir=data) as tempora
         stop_before_files()
         # 必须在 purge/覆盖 ETC 前保存并撤销本轮授权，失败时保留原 journal。
         self.restore_storage_acl()
+        self.storage_acl_purge_archive = None
         attempt(lambda: run('systemctl', 'disable', *UNITS, check=False))
         # 先清理候选包，之后还原旧 venv，避免新 postrm 删除回滚运行环境。
         def purge():
