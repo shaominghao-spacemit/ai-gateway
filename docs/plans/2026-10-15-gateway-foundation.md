@@ -135,3 +135,46 @@ req-718395c4495749d7bd163a17564f901a 已 completed、safe_to_release=true、occu
 最终原hosts字节SHA、644/root:root恢复核验通过；原Gateway服务active；共享主树保持原状。没有永久发布包/apt/tag，也未推送或更新MR。
 已通过bibit-dev verify record记录3项，并保留完整失败工具尝试和人工完整恢复证据。
 原Gateway生命周期报告子段contract仍为旧报告标签managed-asr-v1，并不表示使用协议v1；实际接口status与acquire按v2校验，配对主报告managed-asr-v2。此次不为报告标签重新生成生产包，后续可单独整理报告schema。
+
+
+### 2026-10-21 交付基线及报告残留补修
+
+只读SSH核查MR !7 head=e4e28ce528fccc3cfebc26a8498a021c1ff5af4b，对应现有源分支mr/task-b15a2812223a40c5-c7f5ba5967af。
+本地main的15个历史提交全部是该MR头的祖先；修复提交3ef9550为该MR头的直接子提交。不需要强制推送或重置main即可更新现有MR源分支，仍等待明确远程交付授权，不能绕过交付门禁自行接管历史台账。API匿名返回404，不据此推断MR状态。
+报告残留不再跳过：debian/tests/test-device-lifecycle.py的managed_evidence.contract由v1改为v2；先加实际构造断言产生失败，再改共享初始化，77项生命周期测试及83子测试通过；双Python全量各876项重新串行通过。
+新Gateway打包请求req-469c00bf5cc847b5a924965cda399266，调度到K3DEB1-3独占attempt att-7ec492e9ea6c4e27826d546d89f560e2/fence368。同一已获许可的临时DNS方案使用平台受控恢复进程；没有碰其它两板正在执行的他人任务。新产物与DNS最终恢复等待确认，不能用旧包标签冒充修正后包。
+该板新运行时为Python3.14，NumPy2.5.4已由平台构建完成，仍在编译uvloop等依赖；新包需重新验证离线安装与真实推理，旧包验收不自动覆盖新运行时。
+为满足联合验收同构建板约束，最终Voice源码e5aa4300fb1d5beb492911326500073ff6ccfde1受控重建已排队req-acd9582c10124be4b87a19f48dea01c5，钉K3DEB1-3，未改变业务源码或抢占他人租约。
+Gateway新构建已completed：artifact gateway-7ec492e9ea6c，deb SHA256 b195b4b5d90534460fdad91fd38f1d7a42159e0064ff6490b70f7def333338af。完整分页事件核验cleanup safe_to_release=true，occupancy=[]。
+DNS守护退出码0，原hosts SHA256 7e5868f35fdebf305422b880744e4e0533392a3787e5da113f8f597a8a9cf0c0、644/root:root、默认解析167.82.24.223均由恢复日志与只读SSH独立核验。未在后续Voice租约内写板端文件。
+新deb内生命周期helper与工作树字节相同，实际导入初始化contract=managed-asr-v2，未传模型用例仍not_run/not_passed，未伪造识别通过。新包声明Python3.14 minor约束，不能安装到旧Python3.12板后声称兼容；已排同板生命周期验收req-af65ee337efe490f92f4cbeefd525bb2。新包运行时真实推理仍待验收。
+配对Voice同板重建已completed：voice-a847a0a5f37d，deb SHA256 fbdd2be38c6bdf4a58be55e2e385a19201f8fafaeb1fad3c8effb9e4f3aeff0b，sherpa摘要不变。Gateway完整生命周期正在执行，双模型联合请求req-35054c6e7e8d4bdbb9daee0af558d7a4已排队，均由平台串行持有独占租约。
+
+### 新包验收的板端失联（尚未通过）
+
+req-af65ee337efe490f92f4cbeefd525bb2已取得K3DEB1-3独占att-53a39afa1fd94d028a6c41e80ff6bbbb/fence370；deploy_started后SSH返回No route to host，attempt转recovering，租约仍保留。只读ping100%丢包，邻居表FAILED；无法确认包安装进度及本次恢复，未标safe_to_release、未强行释放或另抢板。
+这次失联不推翻此前构建阶段DNS原字节/权限/默认解析的独立恢复证据，但不能拿此前restored=true证明本次验收恢复。双模型联合仍排队，已向用户询问现场电源/网线/IP且要求先不要重启。
+当前不提交报告补修、不合入/推送/更新MR；新包验收待板恢复后继续。网络证据gateway-report-v2-acceptance-network-summary.json；现有35项版本化证据摘要重新核验，无raw租约日志入版本化清单。
+
+### 再次继续时的部署失败确认
+
+平台新增gateway_lifecycle_result为空对象、deploy_failed退出码255（产物摘要已校验后SSH连接超时），attempt错误明确为gateway restoration unconfirmed; board quarantined。板仍No route to host，原独占占用保留。该结果是部署步骤失败，不是完整生命周期失败摘要，更不是恢复成功；安装进度及包副作用仍未知。
+已更新原网络证据并重新询问现场电源/网线/IP；不重复部署、不转用其它板、不重启或强行释放。原宿主回归与构建证据保留；当前36项证据摘要核验，包含宿主Python3.14的77项生命周期助手测试，不将其当真机安装证明。
+
+### 用户重启后的精确恢复
+
+用户确认K3卡死并已重启。只读身份核对同板machine-id、boot-id已变化、IP仍10.0.90.235；候选0.0.20残留，FastAPI下111个零字节文件，后端ImportError持续重启。原私有备份gateway-backup-t6741uxw仍完整，旧FastAPI文件1081字节，候选deb原摘要未变；未据此断言卡死根因。
+在原本任务占用/fence370仍有效、宿主生命周期锁独占下，使用包内同字节Lifecycle.restore还原旧包0.0.19、原文件及外部数据库，未手写替代恢复逻辑。实际恢复exit0，4263个原文件内容及软链核对通过、原后端health HTTP200，DNS原摘要不变。仅新增restoration_only=true/result=failed/restored=true证据，不篡改原失败记录。
+平台随后确认清理并将旧attempt置interrupted、请求failed、occupancy=[]；排队联合验收req-35054c6e7e8d4bdbb9daee0af558d7a4自动取得新att-7cb8390871a14e5fb919fe278b5ea2f6/fence371，当前活进程正在安装/测试新配对包。新请求期间dpkg中间态及锁占用不当作恢复后的永久损坏；不与该请求并发操作包。
+证据gateway-reboot-restoration.txt。上次boot末尾kernel日志没有可见panic/OOM/lockup记录，不构成硬件无故障证明。新包完整生命周期需另行通过，联合及本次恢复结果继续跟踪。
+新配对联合已completed：req-35054c6e7e8d4bdbb9daee0af558d7a4、att-7cb8390871a14e5fb919fe278b5ea2f6，result=ok/restored=true/managed_asr.t18.result=ok；SenseVoice/Qwen3-ASR各local/gateway真人音频四组合与MainPID稳定、安装先后/卸载重装/原key及偏好/锁inode恢复通过。完整分页事件证实cleanup safe_to_release=true且occupancy=[]，证据gateway-report-v2-final-joint-summary.json，未改写旧失败记录。
+原完整生命周期请求已按平台终态重排，同req-af65ee337efe490f92f4cbeefd525bb2的新attempt att-be125f92f546461299a3c7cb475f85c8/fence372正在实际执行；不重复启动旧attempt，当前只有一个活root安装助手。
+
+### 新包全部机器验收收口
+
+新完整生命周期att-be125f92f546461299a3c7cb475f85c8已completed：result=ok/restored=true，安装configure重入、旧监听/身份保持、目录边界、真实VAD故障与重载、管理员配置/ACL、升级/remove/purge/reinstall、完整管理员User=bianbu环境升级、原Intent LLM与Embedding（向量cosine1.0、max_abs_error0）、外部数据库及原包/服务恢复通过。该基础报告managed_asr为v2且not_run/not_passed；双模型由独立新配对联合证明，不伪造基础报告。
+两请求均cleanup safe_to_release=true、occupancy=[]。最后只读SSH确认Gateway0.0.19和Voice0.1.8均ii、dpkg --audit无输出、原Gateway两服务active、healthHTTP200、hosts原SHA/644/root:root恢复。证据gateway-report-v2-final-lifecycle-summary.json、gateway-report-v2-final-joint-summary.json、gateway-report-v2-final-summary.json及两个verify.tsv。
+最终宿主全量按仓库交付命令重跑876 passed/33 skipped/83 subtests，日志gateway-report-v2-final-host.txt；本轮仅报告标签及对应断言改变可执行源码。旧最终包的GDB锁寿命/并发健康/HTTP边界专项证据仍作为同源码历史专项，不声称本轮新包重复跑过GDB或全仓安全审计。
+原卡死原因仍未证明；重启后两项实际验收已通过，不把重启当成根因修复。当前待本地补修提交及交付门禁处理，MR远端头仍e4e28ce，未永久部署/发布apt/tag或推送。
+配对Voice交付225项再次通过；裸全量241项因未使用fakeroot导致未改动的dh_installdeb测试权限错误，按仓库注释fakeroot专项10项通过，失败/成功证据均保留，不修改测试绕过。Gateway/Voice当前业务源码未新增改动；本次补修仅报告标签及对应断言。
+最终Voice按仓库文档fakeroot完整全量241项通过，61.946秒；与交付225项一起保留。可执行源码和真机候选已验，本地补修提交按持续授权执行，远端仍未修改。

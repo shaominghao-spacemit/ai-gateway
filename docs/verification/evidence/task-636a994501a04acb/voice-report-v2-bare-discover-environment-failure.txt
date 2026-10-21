@@ -1,0 +1,19 @@
+bibit-voice-tool: listening: /tmp/tmpobhoq0j7/tool.sock
+bibit-voice-tool: upstream connected: /tmp/tmpobhoq0j7/audio.sock
+pipeline.cpp sha256=816f4ebf7f2dbc113871959934e0ba64cfb56666aa425fe57cd7e935adc5c551
+======================================================================
+ERROR: test_generated_maintainer_scripts (test_debian_autostart.DebianAutostartTest.test_generated_maintainer_scripts)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/shaominghao/CodeSpace/bibit-workspace/.integration-worktrees/voice-gateway-session-fixes/tests/test_debian_autostart.py", line 50, in test_generated_maintainer_scripts
+    subprocess.run([command, *args, '-pbibit-voice'], cwd=stage, check=True, capture_output=True)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/subprocess.py", line 578, in run
+    raise CalledProcessError(retcode, process.args,
+                             output=stdout, stderr=stderr)
+subprocess.CalledProcessError: Command '['dh_installdeb', '-pbibit-voice']' returned non-zero exit status 255.
+
+----------------------------------------------------------------------
+Ran 241 tests in 61.458s
+
+FAILED (errors=1)

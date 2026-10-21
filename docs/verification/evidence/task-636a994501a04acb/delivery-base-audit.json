@@ -1,0 +1,18 @@
+{
+  "mr": 7,
+  "remote_head_verified": "e4e28ce528fccc3cfebc26a8498a021c1ff5af4b",
+  "source_branch": "mr/task-b15a2812223a40c5-c7f5ba5967af",
+  "remote_main": "47681187722d7ebdfa7923739827e1c0aaf9f727",
+  "local_main": "c7f5ba5967afdb860b82f68b36f7808283bf9f55",
+  "repair_commit": "3ef9550a90ab814c89941ef6b03bb4da7ae13134",
+  "local_main_ahead": 15,
+  "all_local_main_history_in_mr_head": true,
+  "mr_head_is_parent_of_repair": true,
+  "needs_force_push": false,
+  "needs_reset_local_main": false,
+  "remote_write_authorization": "pending_user_reply",
+  "authenticated_gitlab_mr_state": "unavailable_api_404",
+  "packaged_report_label": "managed-asr-v2_verified_in_new_package_gateway-7ec492e9ea6c",
+  "checked_at": "2026-10-21T06:18:49.269480+00:00",
+  "new_package_machine_evidence": "gateway-report-v2-final-summary.json"
+}

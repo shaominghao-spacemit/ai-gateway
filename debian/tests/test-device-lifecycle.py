@@ -263,7 +263,7 @@ class Lifecycle:
         self.intent_original = None
         self.legacy_intent_evidence = {'result': 'not_run', 'reason': 'original_upgrade_not_checked'}
         self.managed_cases = None
-        self.managed_evidence = {'contract': 'managed-asr-v1', 'result': 'not_run', 'models': [],
+        self.managed_evidence = {'contract': 'managed-asr-v2', 'result': 'not_run', 'models': [],
                                  't18': {'result': 'not_passed', 'reason': 'both_models_not_verified'}}
 
     def checked(self, name):

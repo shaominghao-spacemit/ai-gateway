@@ -1236,6 +1236,7 @@ class ManagedLifecycleTests(unittest.TestCase):
         self.job = lifecycle.Lifecycle(self.args)
 
     def test_foundation_run_cannot_be_managed_evidence(self):
+        self.assertEqual(self.job.managed_evidence['contract'], 'managed-asr-v2')
         self.args.managed_cases = None
         self.job.managed_contract()
         self.assertEqual(self.job.managed_evidence['result'], 'not_run')

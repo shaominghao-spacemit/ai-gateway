@@ -1,0 +1,91 @@
+{
+  "result": "ok",
+  "sha256": "b195b4b5d90534460fdad91fd38f1d7a42159e0064ff6490b70f7def333338af",
+  "restored": true,
+  "checks": [
+    "original-listener-auth-contract-snapshotted",
+    "external-model-databases-snapshotted",
+    "preflight-backup-rollback-deb",
+    "postinst-configure-reentry",
+    "original-listener-auth-contract-preserved",
+    "legacy-root-identity-preserved",
+    "r2-program-readonly-data-sqlite-writable",
+    "legacy-intent-original-config-real-llm-embedding-upgrade",
+    "real-vad-load-inference",
+    "administrator-auth-config-environment-dropin-data",
+    "r6-failed-model-degrades-health",
+    "real-vad-load-inference",
+    "r6-real-model-reload-health-recovered",
+    "real-vad-load-inference",
+    "health-failure-kill-auto-recovery",
+    "upgrade-preserves-administrator-state",
+    "remove-preserves-administrator-state",
+    "real-vad-load-inference",
+    "reinstall-purge-preserves-dropin-and-data",
+    "external-model-databases-restored",
+    "external-model-databases-restored",
+    "original-package-files-data-services-restored",
+    "mr7-admin-unit-stopped-environment-upgrade",
+    "mr7-admin-existing-markers-systemd-environment-upgrade",
+    "external-model-databases-restored",
+    "external-model-databases-restored",
+    "original-package-files-data-services-restored",
+    "protected-package-inventory-unchanged"
+  ],
+  "request_id": "req-af65ee337efe490f92f4cbeefd525bb2",
+  "attempt_id": "att-be125f92f546461299a3c7cb475f85c8",
+  "artifact_id": "gateway-7ec492e9ea6c",
+  "managed_asr": {
+    "contract": "managed-asr-v2",
+    "result": "not_run",
+    "models": [],
+    "t18": {
+      "result": "not_passed",
+      "reason": "both_models_not_verified"
+    }
+  },
+  "legacy_intent": {
+    "result": "ok",
+    "client_version": "0.1.91",
+    "source_and_configuration_unchanged": true,
+    "comparison": {
+      "browser": {
+        "dimension": 1024,
+        "cosine": 1.0,
+        "max_abs_error": 0.0
+      },
+      "question": {
+        "dimension": 1024,
+        "cosine": 1.0,
+        "max_abs_error": 0.0
+      },
+      "version": {
+        "dimension": 1024,
+        "cosine": 1.0,
+        "max_abs_error": 0.0
+      }
+    }
+  },
+  "protected_packages_before": [
+    "bibit-intent\t0.1.91\tinstall ok installed",
+    "bibit-voice\t0.1.8\tinstall ok installed",
+    "libonnx1t64:riscv64\t1.20.0-1\tinstall ok installed",
+    "libonnxruntime-providers:riscv64\t1.23.2+dfsg-6ubuntu1\tinstall ok installed",
+    "libonnxruntime1.23:riscv64\t1.23.2+dfsg-6ubuntu1\tinstall ok installed",
+    "libsherpa-onnx-c-api\t0.1.8\tinstall ok installed",
+    "llama.cpp-tools-spacemit\t0.2.3\tinstall ok installed",
+    "python3-spacemit-ort\t2.0.7+2\tinstall ok installed",
+    "spacemit-onnxruntime\t2.0.7+2\tinstall ok installed"
+  ],
+  "protected_packages_after": [
+    "bibit-intent\t0.1.91\tinstall ok installed",
+    "bibit-voice\t0.1.8\tinstall ok installed",
+    "libonnx1t64:riscv64\t1.20.0-1\tinstall ok installed",
+    "libonnxruntime-providers:riscv64\t1.23.2+dfsg-6ubuntu1\tinstall ok installed",
+    "libonnxruntime1.23:riscv64\t1.23.2+dfsg-6ubuntu1\tinstall ok installed",
+    "libsherpa-onnx-c-api\t0.1.8\tinstall ok installed",
+    "llama.cpp-tools-spacemit\t0.2.3\tinstall ok installed",
+    "python3-spacemit-ort\t2.0.7+2\tinstall ok installed",
+    "spacemit-onnxruntime\t2.0.7+2\tinstall ok installed"
+  ]
+}

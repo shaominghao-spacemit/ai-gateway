@@ -1,0 +1,67 @@
+{
+  "request_id": "req-469c00bf5cc847b5a924965cda399266",
+  "attempt_id": "att-7ec492e9ea6c4e27826d546d89f560e2",
+  "board_id": "K3DEB1-3",
+  "status": "completed",
+  "safe_to_release": true,
+  "occupancy": [],
+  "source_digest": "9bcd8a1d4501a583bc4780af08f672f0c59c3ec2e56097be654bcc2af4fe12fe",
+  "artifact": {
+    "architecture": "riscv64",
+    "artifact_id": "gateway-7ec492e9ea6c",
+    "attempt_id": "att-7ec492e9ea6c4e27826d546d89f560e2",
+    "board_id": "K3DEB1-3",
+    "dependency_digest": "sha256:e3b0c44298fc1c149afbf4c8996fb924",
+    "files": [
+      {
+        "board_id": "K3DEB1-3",
+        "location": "board",
+        "name": "spacemit-ai-gateway.deb",
+        "remote_path": "/home/bianbu/bibit-build/artifacts/gateway-7ec492e9ea6c/spacemit-ai-gateway.deb",
+        "sha256": "b195b4b5d90534460fdad91fd38f1d7a42159e0064ff6490b70f7def333338af",
+        "size": 134611034
+      },
+      {
+        "board_id": "K3DEB1-3",
+        "location": "board",
+        "name": "test-device-lifecycle.py",
+        "remote_path": "/home/bianbu/bibit-build/artifacts/gateway-7ec492e9ea6c/test-device-lifecycle.py",
+        "sha256": "d199a8768eca7c36629c2abbe52a17f322078f13ad3fb946cd49353ae79b560b",
+        "size": 76665
+      }
+    ],
+    "recipe": "gateway",
+    "schema_version": 1,
+    "source_branch": "fix/gateway-mr7-complete",
+    "source_digest": "9bcd8a1d4501a583bc4780af08f672f0c59c3ec2e56097be654bcc2af4fe12fe",
+    "source_head": "3ef9550a90ab814c89941ef6b03bb4da7ae13134",
+    "source_workspace": "/home/shaominghao/CodeSpace/bibit-workspace/.integration-worktrees/gateway-mr7-complete-fixes",
+    "toolchain_digest": "sha256:f75bda5464b7dd7deca2d88bfe1b0f0f"
+  },
+  "dns_restoration": {
+    "restored": true,
+    "hosts_sha256": "7e5868f35fdebf305422b880744e4e0533392a3787e5da113f8f597a8a9cf0c0",
+    "mode": "0o644",
+    "uid": 0,
+    "gid": 0,
+    "original_dns": "167.82.24.223"
+  },
+  "package_verification": {
+    "helper_sha256": "d199a8768eca7c36629c2abbe52a17f322078f13ad3fb946cd49353ae79b560b",
+    "package_helper_same_as_source": true,
+    "contract": "managed-asr-v2",
+    "no_fake_managed_pass": true
+  },
+  "runtime": {
+    "python": "3.14",
+    "numpy": "2.5.4",
+    "numpy_wheel_sha256": "4c9d81bae8b2bb6a2bd026039233d873ad8fd15fe9e831c904212432a9884646",
+    "declared_python_depends": "python3 (>= 3.14), python3 (<< 3.15)"
+  },
+  "acceptance_request_id": "req-af65ee337efe490f92f4cbeefd525bb2",
+  "acceptance_result": "passed_after_operator_reboot_and_original_restoration",
+  "voice_build_request_id": "req-acd9582c10124be4b87a19f48dea01c5",
+  "voice_artifact_id": "voice-a847a0a5f37d",
+  "joint_request_id": "req-35054c6e7e8d4bdbb9daee0af558d7a4",
+  "acceptance_summary": "gateway-report-v2-final-summary.json"
+}

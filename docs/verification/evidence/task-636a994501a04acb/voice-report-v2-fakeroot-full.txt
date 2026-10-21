@@ -1,0 +1,7 @@
+bibit-voice-tool: listening: /tmp/tmptq26vv7j/tool.sock
+bibit-voice-tool: upstream connected: /tmp/tmptq26vv7j/audio.sock
+pipeline.cpp sha256=816f4ebf7f2dbc113871959934e0ba64cfb56666aa425fe57cd7e935adc5c551
+----------------------------------------------------------------------
+Ran 241 tests in 61.946s
+
+OK

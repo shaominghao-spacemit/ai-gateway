@@ -1,0 +1,81 @@
+{
+  "request_id": "req-af65ee337efe490f92f4cbeefd525bb2",
+  "status": "running",
+  "attempt": {
+    "attempt_id": "att-53a39afa1fd94d028a6c41e80ff6bbbb",
+    "board_id": "K3DEB1-3",
+    "fence": 370,
+    "status": "recovering",
+    "error": "gateway restoration unconfirmed; board quarantined: deploy failed: /home/bianbu/bibit-build/artifacts/gateway-7ec492e9ea6c/spacemit-ai-gateway.deb: OK\nTimeout, server 10.0.90.235 not responding."
+  },
+  "occupancy": [
+    {
+      "acquired_at": "2026-10-21T05:05:08.861547+00:00",
+      "attempt_id": "att-53a39afa1fd94d028a6c41e80ff6bbbb",
+      "fence": 370,
+      "resource_id": "K3DEB1-3",
+      "resource_type": "board"
+    }
+  ],
+  "acceptance_result": "deployment_failed_restoration_unconfirmed",
+  "installation_state": "unknown_due_to_board_unreachable",
+  "restoration_result": "unknown_due_to_board_unreachable",
+  "safe_to_release": "not_confirmed",
+  "network": {
+    "host": "10.0.90.235",
+    "ssh_error": "No route to host",
+    "ping": "100% packet loss",
+    "neighbor": "FAILED",
+    "route": "10.0.90.235 dev enp3s0 src 10.0.90.165"
+  },
+  "dns_restored_before_acceptance": true,
+  "joint_request_id": "req-35054c6e7e8d4bdbb9daee0af558d7a4",
+  "joint_result": "queued",
+  "voice_artifact": {
+    "architecture": "riscv64",
+    "artifact_id": "voice-a847a0a5f37d",
+    "attempt_id": "att-a847a0a5f37d45af8cbe86daacd31877",
+    "board_id": "K3DEB1-3",
+    "dependency_digest": "sha256:cc2159b6de236082f4408b379d775963",
+    "files": [
+      {
+        "board_id": "K3DEB1-3",
+        "location": "board",
+        "name": "bibit-voice.deb",
+        "remote_path": "/home/bianbu/bibit-build/artifacts/voice-a847a0a5f37d/bibit-voice.deb",
+        "sha256": "fbdd2be38c6bdf4a58be55e2e385a19201f8fafaeb1fad3c8effb9e4f3aeff0b",
+        "size": 347430
+      },
+      {
+        "board_id": "K3DEB1-3",
+        "location": "board",
+        "name": "libsherpa-onnx-c-api.deb",
+        "remote_path": "/home/bianbu/bibit-build/artifacts/voice-a847a0a5f37d/libsherpa-onnx-c-api.deb",
+        "sha256": "a37b90845088dd905d0298ddd11efda4a7325930e0fc8a02776eea55678318a7",
+        "size": 1514786
+      }
+    ],
+    "recipe": "voice",
+    "schema_version": 1,
+    "source_branch": "fix/voice-gateway-session",
+    "source_digest": "cc524b5ddaabbfac7c49a932a99813dd54f471da6b01c7be8a3e35720d0a6fe2",
+    "source_head": "e5aa4300fb1d5beb492911326500073ff6ccfde1",
+    "source_workspace": "/home/shaominghao/CodeSpace/bibit-workspace/.integration-worktrees/voice-gateway-session-fixes",
+    "toolchain_digest": "sha256:f75bda5464b7dd7deca2d88bfe1b0f0f"
+  },
+  "guard_exit_code": 0,
+  "forced_release": false,
+  "request_cancelled": false,
+  "checked_at": "2026-10-21T05:55:13.781481+00:00",
+  "deployment_step": {
+    "exit_code": 255,
+    "error": "/home/bianbu/bibit-build/artifacts/gateway-7ec492e9ea6c/spacemit-ai-gateway.deb: OK\nTimeout, server 10.0.90.235 not responding.",
+    "event_seq": 228231
+  },
+  "lifecycle_result_payload": {},
+  "quarantined_due_to_unconfirmed_restoration": true,
+  "historical_snapshot": true,
+  "later_resolution": "operator reboot; original backup restoration verified; original attempt interrupted; retry and new-pair joint completed successfully",
+  "restoration_evidence": "gateway-reboot-restoration.txt",
+  "final_evidence": "gateway-report-v2-final-summary.json"
+}

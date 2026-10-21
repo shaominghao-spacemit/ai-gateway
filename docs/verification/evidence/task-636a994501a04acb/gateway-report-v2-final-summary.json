@@ -1,0 +1,34 @@
+{
+  "checked_at": "2026-10-21T06:16:36.451883+00:00",
+  "gateway_artifact_id": "gateway-7ec492e9ea6c",
+  "gateway_sha256": "b195b4b5d90534460fdad91fd38f1d7a42159e0064ff6490b70f7def333338af",
+  "voice_artifact_id": "voice-a847a0a5f37d",
+  "voice_sha256": "fbdd2be38c6bdf4a58be55e2e385a19201f8fafaeb1fad3c8effb9e4f3aeff0b",
+  "source_code_change_since_original_acceptance": "report label only plus regression assertion",
+  "deployment_not_permanent": true,
+  "local_main_landed": false,
+  "remote_updated": false,
+  "remaining": [
+    "final local patch commit",
+    "Gateway delivery prepare blocked by existing local main history",
+    "existing MR update and paired Voice remote delivery pending"
+  ],
+  "lifecycle": {
+    "request_id": "req-af65ee337efe490f92f4cbeefd525bb2",
+    "attempt_id": "att-be125f92f546461299a3c7cb475f85c8",
+    "status": "completed",
+    "result": "ok",
+    "restored": true,
+    "safe_to_release": true,
+    "occupancy": []
+  },
+  "joint": {
+    "request_id": "req-35054c6e7e8d4bdbb9daee0af558d7a4",
+    "attempt_id": "att-7cb8390871a14e5fb919fe278b5ea2f6",
+    "status": "completed",
+    "result": "ok",
+    "restored": true,
+    "safe_to_release": true,
+    "occupancy": []
+  }
+}

@@ -1,0 +1,2 @@
+request_id	attempt_id	artifact_id	item	result	owner	note	evidence	event_seq	created_at
+req-35054c6e7e8d4bdbb9daee0af558d7a4	att-7cb8390871a14e5fb919fe278b5ea2f6	voice-a847a0a5f37d	report-v2-final-pair-real-models	pass	agent	新Gateway Python3.14/NumPy2.5.4配最终Voice；SenseVoice/Qwen local及gateway四组合真实音频、安装顺序/卸载与原现场恢复通过；restored=true、safe_to_release=true	/home/shaominghao/CodeSpace/bibit-workspace/.integration-worktrees/gateway-mr7-complete-fixes/docs/verification/evidence/task-636a994501a04acb/gateway-report-v2-final-joint-summary.json	228810	2026-10-21T06:12:32.796413+00:00
