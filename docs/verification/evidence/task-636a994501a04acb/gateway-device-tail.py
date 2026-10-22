@@ -3,13 +3,13 @@
 import http.client
 from contextlib import closing
 import importlib.util
-import json
 from pathlib import Path
 import sys
 
 
 def parts(size):
-    yield b'--device-audit\r\nContent-Disposition: form-data; name="file"; filename="test.wav"\r\nContent-Type: audio/wav\r\n\r\n'
+    yield (b'--device-audit\r\nContent-Disposition: form-data; name="file"; '
+           b'filename="test.wav"\r\nContent-Type: audio/wav\r\n\r\n')
     chunk = b'x' * 65536
     while size:
         value = chunk[:min(size, len(chunk))]

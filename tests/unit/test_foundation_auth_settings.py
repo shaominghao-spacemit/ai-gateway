@@ -196,7 +196,7 @@ def test_voice_key_route_match_does_not_use_prefix(monkeypatch):
 def test_voice_key_rejects_untrusted_file(monkeypatch, tmp_path, content, mode, owner_offset, group_exists):
     from spacemit_ai_gateway.gateway import auth
 
-    path = install_voice_key(monkeypatch, tmp_path, content, mode)
+    install_voice_key(monkeypatch, tmp_path, content, mode)
     monkeypatch.setattr(auth, "VOICE_API_KEY_OWNER", os.geteuid() + owner_offset)
     if not group_exists:
         def missing_group(name):

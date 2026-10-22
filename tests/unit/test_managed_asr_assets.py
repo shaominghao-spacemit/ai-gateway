@@ -24,7 +24,8 @@ def assets(request, tmp_path, monkeypatch):
         (root / name).write_bytes(b'weights')
     if model != 'sensevoice':
         (root / 'config.json').write_text('{"audio_model": {}}')
-    digest = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
+    def digest(path):
+        return hashlib.sha256(path.read_bytes()).hexdigest()
     manifest = {'model': model, 'version': 'test-v1',
                 'files': {name: digest(root / name) for name in required},
                 'runtime': {'packages': {'spacemit-asr': '1.0.2'},

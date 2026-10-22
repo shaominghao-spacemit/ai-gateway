@@ -34,7 +34,8 @@ async def engine(tmp_path, monkeypatch):
     (root / 'config.json').write_text('{"audio_model": {"ep_config": {"old": true}}}')
     lib = tmp_path / 'lib-test.so'
     lib.write_bytes(b'test-runtime')
-    digest = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
+    def digest(path):
+        return hashlib.sha256(path.read_bytes()).hexdigest()
     (root / 'managed-asr-manifest.json').write_text(json.dumps({
         'model': 'qwen3_asr_0.6b', 'version': 'test-1',
         'files': {name: digest(root / name) for name in (*QWEN_ENCODERS, QWEN_TEXT, 'config.json')},

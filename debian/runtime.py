@@ -77,12 +77,16 @@ def install_runtime(app=APP):
         venv.EnvBuilder(with_pip=True, system_site_packages=True).create(candidate)
         python = candidate / "bin/python"
         env = {**os.environ, "PIP_NO_INDEX": "1", "PIP_DISABLE_PIP_VERSION_CHECK": "1", "PYTHONNOUSERSITE": "1"}
-        subprocess.run([str(python), "-m", "pip", "install", "--no-index", "--no-deps", "--require-hashes", "--ignore-installed",
-                        "--find-links", str(bundle / "wheels"), "-r", str(bundle / "runtime-lock.txt")],
-                       env=env, check=True)
+        subprocess.run([
+            str(python), "-m", "pip", "install", "--no-index", "--no-deps", "--require-hashes", "--ignore-installed",
+            "--find-links", str(bundle / "wheels"), "-r", str(bundle / "runtime-lock.txt")],
+            env=env, check=True)
     # 复用已安装环境时也验证系统 ORT/OpenCV，缺依赖时不能切换或假报成功。
-    subprocess.run([str(candidate / "bin/python"), "-c", "import spacemit_ai_gateway, spacemit_asr, spacemit_tts, spacemit_vad, spacemit_audio, spacemit_vision, onnxruntime, cv2"],
-                   env={**os.environ, "PYTHONNOUSERSITE": "1"}, check=True)
+    subprocess.run([
+        str(candidate / "bin/python"), "-c",
+        "import spacemit_ai_gateway, spacemit_asr, spacemit_tts, spacemit_vad, "
+        "spacemit_audio, spacemit_vision, onnxruntime, cv2"],
+        env={**os.environ, "PYTHONNOUSERSITE": "1"}, check=True)
     (candidate / ".complete").touch()
     link = app / "venv"
     pending = app / "venv.next"
@@ -399,7 +403,9 @@ def registered_model_paths(root, databases):
             connection = sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)
             try:
                 connection.execute("PRAGMA query_only=ON")
-                if not connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='models'").fetchone():
+                if not connection.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='models'"
+                ).fetchone():
                     continue
                 for source_type, local_path in connection.execute("SELECT source_type, local_path FROM models"):
                     if source_type == "remote":
@@ -606,11 +612,14 @@ def migrate_legacy(root=Path("/")):
                 for field in ("base_dir", "models_dir", "db_path"):
                     value = domain["storage"].get(field)
                     if isinstance(value, str):
-                        absolute = materialize(value, home, context.get("working_directory", "/opt/spacemit-ai-gateway"))
+                        absolute = materialize(
+                            value, home, context.get("working_directory", "/opt/spacemit-ai-gateway"))
                         if not Path(absolute).is_absolute():
-                            absolute = str(Path(context.get("working_directory", "/opt/spacemit-ai-gateway")) / absolute)
+                            absolute = str(
+                                Path(context.get("working_directory", "/opt/spacemit-ai-gateway")) / absolute)
                         if override and absolute != value:
-                            inherited.setdefault(f"SPACEMIT_AI_GATEWAY_{domain_name.upper()}__STORAGE__{field.upper()}", absolute)
+                            inherited.setdefault(
+                                f"SPACEMIT_AI_GATEWAY_{domain_name.upper()}__STORAGE__{field.upper()}", absolute)
                         domain["storage"][field] = absolute
                         if field == "db_path":
                             databases[domain_name.upper()] = absolute
@@ -663,7 +672,8 @@ def migrate_legacy(root=Path("/")):
                 pending[environment] = "".join(lines)
         for key in list(inherited):
             if storage_field(key) or model_directory_field(key) or key == "XDG_CACHE_HOME":
-                inherited[key] = materialize(inherited[key], home, context.get("working_directory", "/opt/spacemit-ai-gateway"))
+                inherited[key] = materialize(
+                    inherited[key], home, context.get("working_directory", "/opt/spacemit-ai-gateway"))
                 value = inherited[key]
                 if key != "XDG_CACHE_HOME":
                     paths.append((str(Path(value).parent) if key.endswith("DB_PATH") else value, True))
@@ -672,7 +682,8 @@ def migrate_legacy(root=Path("/")):
         for key, value in effective.items():
             if storage_field(key) and key.upper().endswith("__DB_PATH"):
                 domain = key.removeprefix("SPACEMIT_AI_GATEWAY_").split("__")[0].upper()
-                databases[domain] = materialize(value, home, context.get("working_directory", "/opt/spacemit-ai-gateway"))
+                databases[domain] = materialize(
+                    value, home, context.get("working_directory", "/opt/spacemit-ai-gateway"))
         paths.extend(registered_model_paths(root, databases.values()))
         effective_home = effective.get("HOME", home)
         paths.extend(legacy_default_assets(effective_home, effective.get("XDG_CACHE_HOME", "~/.cache")))
@@ -686,8 +697,9 @@ def migrate_legacy(root=Path("/")):
             if root == Path("/"):
                 os.chown(current, 0, grp.getgrnam("spacemit-ai-gateway").gr_gid)
             current.chmod(0o640)
-        if administrator_uid and (not context.get("environment", {}).get("SPACEMIT_AI_GATEWAY_CONFIG")
-                                  or context["environment"]["SPACEMIT_AI_GATEWAY_CONFIG"] == "/etc/spacemit-ai-gateway/base.yaml"):
+        configured = context.get("environment", {}).get("SPACEMIT_AI_GATEWAY_CONFIG")
+        if administrator_uid and (
+                not configured or configured == "/etc/spacemit-ai-gateway/base.yaml"):
             grant_storage_access(root, [("/etc/spacemit-ai-gateway/base.yaml", False)], uid=administrator_uid)
         for environment, text in pending.items():
             private_write(environment, text)
@@ -695,7 +707,9 @@ def migrate_legacy(root=Path("/")):
         values = environment_values(credentials)
         additions = "".join(env_line(key, value) for key, value in sorted(inherited.items()) if key not in values)
         if not credentials.exists():
-            private_write(credentials, "# Preserved legacy gateway authentication; YAML remains authoritative.\n" + additions)
+            private_write(
+                credentials,
+                "# Preserved legacy gateway authentication; YAML remains authoritative.\n" + additions)
         elif additions:
             preserve(credentials, etc / "legacy-credentials.env")
             private_write(credentials, credentials.read_text().rstrip("\n") + "\n" + additions)
