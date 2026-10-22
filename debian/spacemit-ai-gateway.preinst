@@ -89,7 +89,7 @@ def parse_environment(text):
 
 
 def read_environment(path):
-    return parse_environment(path.read_bytes().decode('utf-8'))
+    return parse_environment(path.read_bytes().decode('utf-8', errors='surrogateescape'))
 
 
 def read_environment_files(root, name, optional):

@@ -115,7 +115,7 @@ def private_write(path, text):
     """原子发布迁移状态，临时文件与恢复副本均只允许 root 读取。"""
     fd, temporary = tempfile.mkstemp(prefix=".migration-", dir=path.parent)
     try:
-        with os.fdopen(fd, "w") as stream:
+        with os.fdopen(fd, "w", errors="surrogateescape") as stream:
             stream.write(text)
             stream.flush()
             os.fsync(stream.fileno())
@@ -154,6 +154,10 @@ def ensure_voice_key(path=VOICE_KEY, group=VOICE_KEY_GROUP):
     if path.exists() and not (path.is_symlink() or path.is_file()):
         raise RuntimeError(f"Refusing to replace non-file Voice key path: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
+    directory = path.parent.lstat()
+    if (not stat.S_ISDIR(directory.st_mode) or directory.st_uid != os.geteuid()
+            or directory.st_mode & (stat.S_IWGRP | stat.S_IWOTH)):
+        raise RuntimeError(f"Refusing to create Voice key in unsafe directory: {path.parent}")
     fd, temporary = tempfile.mkstemp(prefix=".voice-api-key-", dir=path.parent)
     try:
         with os.fdopen(fd, "w") as stream:
@@ -193,7 +197,7 @@ def grant_voice_key_access(path=VOICE_KEY, tmpfiles=VOICE_KEY_TMPFILES, group=VO
 
 def preserve(source, destination):
     if not destination.exists():
-        private_write(destination, source.read_text())
+        private_write(destination, source.read_text(errors="surrogateescape"))
 
 
 def parse_environment(text):
@@ -262,7 +266,7 @@ def parse_environment(text):
 
 def environment_values(path):
     # 直接解码，保留多行引号里的 CR；不展开变量或执行命令。
-    return parse_environment(path.read_bytes().decode('utf-8')) if path.is_file() else {}
+    return parse_environment(path.read_bytes().decode('utf-8', errors='surrogateescape')) if path.is_file() else {}
 
 
 def env_line(key, value):
@@ -657,7 +661,8 @@ def migrate_legacy(root=Path("/")):
         for name in ("credentials.env", "environment"):
             environment = etc / name
             values = environment_values(environment)
-            lines = environment.read_text().splitlines(keepends=True) if environment.exists() else []
+            lines = (environment.read_text(errors="surrogateescape").splitlines(keepends=True)
+                     if environment.exists() else [])
             for index, line in enumerate(lines):
                 key = line.partition("=")[0].strip()
                 if (storage_field(key) or model_directory_field(key) or key == "XDG_CACHE_HOME") and key in values:
@@ -667,7 +672,7 @@ def migrate_legacy(root=Path("/")):
                     if key != "XDG_CACHE_HOME":
                         paths.append((str(Path(value).parent) if key.endswith("DB_PATH") else value, True))
             effective_environments.update(values)
-            if environment.exists() and "".join(lines) != environment.read_text():
+            if environment.exists() and "".join(lines) != environment.read_text(errors="surrogateescape"):
                 preserve(environment, etc / f"legacy-{name}")
                 pending[environment] = "".join(lines)
         for key in list(inherited):
@@ -712,7 +717,7 @@ def migrate_legacy(root=Path("/")):
                 "# Preserved legacy gateway authentication; YAML remains authoritative.\n" + additions)
         elif additions:
             preserve(credentials, etc / "legacy-credentials.env")
-            private_write(credentials, credentials.read_text().rstrip("\n") + "\n" + additions)
+            private_write(credentials, credentials.read_text(errors="surrogateescape").rstrip("\n") + "\n" + additions)
         marker.touch()
         storage_marker.touch()
         assets_marker.touch()

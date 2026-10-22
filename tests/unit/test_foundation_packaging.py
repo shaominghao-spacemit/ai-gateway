@@ -46,6 +46,7 @@ def test_voice_key_install_is_atomic_private_and_idempotent(tmp_path, monkeypatc
     """首次发布使用新随机值；合法旧值原样保留，符号链接被安全替换。"""
     key = tmp_path / "etc/spacemit-ai-gateway/voice-api-key"
     key.parent.mkdir(parents=True)
+    key.parent.chmod(0o755)
     monkeypatch.setattr(runtime.grp, "getgrnam", lambda name: type("Group", (), {"gr_gid": 123})(), raising=False)
     monkeypatch.setattr(runtime.os, "fchown", lambda fd, uid, gid: None)
     valid = iter([False, True, False])
@@ -71,6 +72,21 @@ def test_voice_key_install_is_atomic_private_and_idempotent(tmp_path, monkeypatc
     assert runtime.ensure_voice_key(key)
     assert not key.is_symlink() and target.read_text() == "must not be followed\n"
     assert key.read_text().strip() != target.read_text().strip()
+
+
+@pytest.mark.parametrize('mode, owner_offset, message', [
+    (0o777, 0, 'unsafe directory'),
+    (0o755, 1, 'unsafe directory'),
+])
+def test_voice_key_rejects_untrusted_parent_directory(tmp_path, monkeypatch, mode, owner_offset, message):
+    key = tmp_path / "etc/spacemit-ai-gateway/voice-api-key"
+    key.parent.mkdir(parents=True)
+    key.parent.chmod(mode)
+    monkeypatch.setattr(runtime.grp, "getgrnam", lambda name: type("Group", (), {"gr_gid": 123})())
+    monkeypatch.setattr(runtime.os, "geteuid", lambda: key.parent.stat().st_uid + owner_offset)
+    with pytest.raises(RuntimeError, match=message):
+        runtime.ensure_voice_key(key)
+    assert not key.exists()
 
 
 def write_wheel(path, name="gateway-test", requirements=()):
@@ -2159,6 +2175,24 @@ def test_systemd_environment_file_rejects_invalid_characters(tmp_path, invalid, 
     read = runtime.environment_values if reader == 'runtime' else preinst_snapshot().__globals__['read_environment']
     with pytest.raises(ValueError, match='Invalid character'):
         read(path)
+
+
+@pytest.mark.parametrize('reader', ['runtime', 'preinst'])
+def test_systemd_environment_file_preserves_non_utf8_bytes(tmp_path, reader):
+    path = tmp_path / 'operator.env'
+    path.write_bytes(b'A=raw-\xff-tail\n')
+    read = runtime.environment_values if reader == 'runtime' else preinst_snapshot().__globals__['read_environment']
+    value = read(path)['A']
+    assert value.encode('utf-8', errors='surrogateescape') == b'raw-\xff-tail'
+
+
+def test_upgrade_preserves_non_utf8_environment_bytes(intent_upgrade):
+    root, etc, _, _ = intent_upgrade
+    original = b'AUTH__ENABLED=false\nPRESERVED=raw-\xff-tail\n'
+    write_file(etc / 'environment', '')
+    (etc / 'environment').write_bytes(original)
+    runtime.migrate_legacy(root=root)
+    assert (etc / 'environment').read_bytes() == original
 
 
 def test_environment_file_parser_copies_remain_identical():
