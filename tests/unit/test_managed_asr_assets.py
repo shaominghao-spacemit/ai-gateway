@@ -48,7 +48,10 @@ def test_full_assets_and_digest_verification(assets):
     assert not check_assets(config, model)[0]
 
 
-@pytest.mark.parametrize('damage', ['manifest', 'identity', 'version', 'library', 'empty', 'missing_file', 'traversal', 'runtime_version'])
+@pytest.mark.parametrize(
+    'damage',
+    ['manifest', 'identity', 'version', 'library', 'empty', 'missing_file', 'traversal', 'runtime_version'],
+)
 def test_incomplete_assets_never_report_ready(assets, damage, monkeypatch):
     config, model, root, manifest, path = assets
     if damage == 'manifest':

@@ -434,7 +434,11 @@ class ManagedAsr:
             return result
 
     def _authorize(self, owner, token):
-        if not self.active or self.owner != owner or not hmac.compare_digest((self.token or '').encode(), token.encode()):
+        if (
+            not self.active
+            or self.owner != owner
+            or not hmac.compare_digest((self.token or '').encode(), token.encode())
+        ):
             raise conflict("invalid_managed_session", 403)
 
     async def recognize(self, owner, token, language, audio):

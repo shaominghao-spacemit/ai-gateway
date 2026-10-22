@@ -227,8 +227,11 @@ async def test_language_changes_do_not_reload_and_owner_retry_recovers_token(man
 
 
 async def test_two_owners_race_one_wins(managed):
-    results = await asyncio.gather(*(managed.acquire(str(uuid4()), 'sensevoice', 'zh', 'test-recovery-secret-' + 'x' * 32)
-                                     for _ in range(2)), return_exceptions=True)
+    results = await asyncio.gather(
+        *(managed.acquire(str(uuid4()), 'sensevoice', 'zh', 'test-recovery-secret-' + 'x' * 32)
+          for _ in range(2)),
+        return_exceptions=True,
+    )
     assert sum(isinstance(r, dict) for r in results) == 1
     assert sum(isinstance(r, DomainError) for r in results) == 1
 
@@ -313,7 +316,13 @@ async def test_http_auth_validation_and_session_routes(managed, monkeypatch):
                                        json=dict(payload, recovery_secret=invalid_secret))
             assert stolen.status_code == 403 and token not in stolen.text
             assert secret not in stolen.text and invalid_secret not in stolen.text
-        for invalid_secret in ('too-short-secret', 'secret-' + 'z' * 128, 'a' * 31 + '\ud800', 987654321, {'secret': secret}):
+        for invalid_secret in (
+            'too-short-secret',
+            'secret-' + 'z' * 128,
+            'a' * 31 + '\ud800',
+            987654321,
+            {'secret': secret},
+        ):
             invalid = await client.post('/v1/asr/managed/acquire',
                                         headers={**headers, 'Content-Type': 'application/json'},
                                         content=__import__('json').dumps(dict(payload, recovery_secret=invalid_secret)))
@@ -528,7 +537,11 @@ async def test_managed_health_reports_backend_failure(managed):
     assert failed['state'] == 'failed' and not failed['ready']
     state = SimpleNamespace(asr_service=managed.service)
     for name in ('tts', 'vad', 'llm', 'embed', 'rerank', 'vlm'):
-        setattr(state, f'{name}_service', SimpleNamespace(healthz=AsyncMock(return_value={'ready': True, 'state': 'ready'})))
+        setattr(
+            state,
+            f'{name}_service',
+            SimpleNamespace(healthz=AsyncMock(return_value={'ready': True, 'state': 'ready'})),
+        )
     result = await health.healthz(SimpleNamespace(app=SimpleNamespace(state=state)))
     assert result['status'] == 'degraded' and result['domains']['asr']['state'] == 'failed'
     await managed.release(owner, acquired['token'])

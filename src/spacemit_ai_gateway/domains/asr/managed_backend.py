@@ -63,7 +63,10 @@ class ManagedBackend:
             for asset in (*QWEN_ENCODERS, QWEN_TEXT):
                 (runtime / asset).symlink_to(root / asset)
             for name in tuple(env):
-                if name.startswith('SPACEMIT_EP_') or name in {'LD_LIBRARY_PATH', 'SPACEMIT_PERFER_CORE_ID', 'SPACEMIT_DISABLE_TCM'}:
+                if (
+                    name.startswith('SPACEMIT_EP_')
+                    or name in {'LD_LIBRARY_PATH', 'SPACEMIT_PERFER_CORE_ID', 'SPACEMIT_DISABLE_TCM'}
+                ):
                     env.pop(name)
             env.update(SPACEMIT_DISABLE_TCM='1', SPACEMIT_PERFER_CORE_ID=cfg.ep_affinity.replace(';', ','))
             args = [shutil.which(cfg.server_bin) or cfg.server_bin, '-m', str(root / QWEN_TEXT),
@@ -119,7 +122,9 @@ class ManagedBackend:
 
     async def _wait_ready(self, root):
         if self.model == 'sensevoice':
-            cfg = self.config.model_copy(update={'backend': 'sensevoice', 'model_dir': str(root), 'language': self.selected[0]})
+            cfg = self.config.model_copy(
+                update={'backend': 'sensevoice', 'model_dir': str(root), 'language': self.selected[0]}
+            )
             reply = await self._exchange({'op': 'init', 'config': cfg.model_dump()})
             self.identity = (reply.get('model'), reply.get('languages'))
             if self.identity != (self.model, self.selected):
@@ -184,7 +189,11 @@ class ManagedBackend:
 
     async def recognize(self, audio, selected):
         if self.model == 'sensevoice':
-            reply = await self._exchange({'op': 'recognize', 'audio': base64.b64encode(audio).decode(), 'languages': selected})
+            reply = await self._exchange({
+                'op': 'recognize',
+                'audio': base64.b64encode(audio).decode(),
+                'languages': selected,
+            })
             return reply['text']
         async with self.io_lock:
             if not await self.healthy():

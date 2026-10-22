@@ -52,7 +52,11 @@ def test_voice_key_install_is_atomic_private_and_idempotent(tmp_path, monkeypatc
     monkeypatch.setattr(runtime, "_valid_voice_key", lambda existing, gid: next(valid))
     spy = []
     original_replace = runtime.os.replace
-    monkeypatch.setattr(runtime.os, "replace", lambda source, target: spy.append((source, target)) or original_replace(source, target))
+    monkeypatch.setattr(
+        runtime.os,
+        "replace",
+        lambda source, target: spy.append((source, target)) or original_replace(source, target),
+    )
     assert runtime.ensure_voice_key(key)
     first = key.read_text().strip()
     assert 40 <= len(first) <= 64 and stat.S_IMODE(key.stat().st_mode) == 0o640
@@ -577,7 +581,9 @@ def test_wheel_metadata_and_public_dependency_roots_keep_numpy(tmp_path):
     assert info["Name"] == "gateway-test"
     assert info["Version"] == "1.0"
     assert info.get_all("Requires-Dist") == requirements
-    assert prepare.dependency_roots([wheel], {"spacemit-asr", "spacemit-tts", "opencv-python"}) == sorted(requirements[:2])
+    assert prepare.dependency_roots(
+        [wheel], {"spacemit-asr", "spacemit-tts", "opencv-python"}
+    ) == sorted(requirements[:2])
 
 
 def test_dependency_roots_deduplicates_without_losing_requirement_markers(tmp_path):
@@ -835,7 +841,10 @@ def test_preinst_snapshots_actual_root_process_home_and_effective_auth(tmp_path,
     # unit 中 false 可被 EnvironmentFile 覆盖；/proc 才是当前有效值。
     shown = 'User=root\nMainPID=123\nEnvironment=HOME=/wrong SPACEMIT_AI_GATEWAY_AUTH__ENABLED=false\n'
     monkeypatch.setattr(subprocess, 'run', lambda *a, **kw: subprocess.CompletedProcess(a, 0, shown, ''))
-    write_file(tmp_path / 'proc/123/environ', 'HOME=/root\0SPACEMIT_AI_GATEWAY_AUTH__ENABLED=true\0SECRET=do-not-copy\0')
+    write_file(
+        tmp_path / 'proc/123/environ',
+        'HOME=/root\0SPACEMIT_AI_GATEWAY_AUTH__ENABLED=true\0SECRET=do-not-copy\0',
+    )
     snapshot = preinst_snapshot()
     snapshot(root=tmp_path, proc=tmp_path / 'proc')
     path = etc / 'legacy-context.json'
@@ -857,7 +866,8 @@ def test_preinst_stopped_service_reads_admin_environment(tmp_path, monkeypatch):
     write_file(etc / 'credentials.env', 'SPACEMIT_AI_GATEWAY_AUTH__ENABLED=true\n')
     write_file(etc / 'environment', 'SPACEMIT_AI_GATEWAY_AUTH__ENABLED=false\n')
     preinst_snapshot()(root=tmp_path, proc=tmp_path / 'proc')
-    assert json.loads((etc / 'legacy-context.json').read_text())['environment']['SPACEMIT_AI_GATEWAY_AUTH__ENABLED'] == 'false'
+    legacy_environment = json.loads((etc / 'legacy-context.json').read_text())['environment']
+    assert legacy_environment['SPACEMIT_AI_GATEWAY_AUTH__ENABLED'] == 'false'
 
 
 def test_preinst_refuses_unknown_old_identity_instead_of_guessing(tmp_path, monkeypatch):
@@ -896,7 +906,11 @@ def test_storage_acl_preserves_models_owner_others_and_masked_groups(tmp_path):
     original_inode, original_uid = model.stat().st_ino, model.stat().st_uid
     # group 对文件有 rwx 但被 mask=r-- 屏蔽；新增服务 rw 不能激活其 w/x。
     original_acl = [(1, 6, 0xffffffff), (4, 7, 0xffffffff), (8, 7, 60002), (16, 4, 0xffffffff), (32, 0, 0xffffffff)]
-    os.setxattr(model, 'system.posix_acl_access', struct.pack('<I', 2) + b''.join(struct.pack('<HHI', *entry) for entry in original_acl))
+    os.setxattr(
+        model,
+        'system.posix_acl_access',
+        struct.pack('<I', 2) + b''.join(struct.pack('<HHI', *entry) for entry in original_acl),
+    )
     runtime.grant_storage_access(root, [('/root/.cache/models/llm', True),
                                         ('/root/.cache/spacemit-ai-gateway/llm', True)], uid=60001)
     entries = acl_entries(model)
@@ -948,7 +962,12 @@ def test_existing_credentials_and_admin_yaml_remain_authoritative(intent_upgrade
     root, etc, _, grants = intent_upgrade
     original = 'SPACEMIT_AI_GATEWAY_AUTH__ENABLED=true\nSPACEMIT_AI_GATEWAY_AUTH__API_KEYS=\'["unchanged"]\'\n'
     write_file(etc / 'credentials.env', original)
-    admin_yaml = 'auth: {enabled: true, api_keys: [yaml-key]}\nllm:\n  storage:\n    models_dir: ~/.cache/admin-models/llm\n'
+    admin_yaml = (
+        'auth: {enabled: true, api_keys: [yaml-key]}\n'
+        'llm:\n'
+        '  storage:\n'
+        '    models_dir: ~/.cache/admin-models/llm\n'
+    )
     write_file(etc / 'base.yaml', admin_yaml)
     runtime.migrate_legacy(root=root)
     assert (etc / 'credentials.env').read_text().startswith(original)
@@ -1041,7 +1060,9 @@ def test_storage_acl_interrupted_journal_can_retry_without_discarding_original(t
 def test_upgrade_preserves_relative_admin_environment_paths(intent_upgrade):
     root, etc, _, grants = intent_upgrade
     write_file(etc / 'environment', 'SPACEMIT_AI_GATEWAY_LLM__STORAGE__MODELS_DIR=local/models/llm\n')
-    write_file(etc / 'legacy-context.json', json.dumps({'home': '/root', 'working_directory': '/srv/gateway', 'environment': {}}))
+    write_file(etc / 'legacy-context.json', json.dumps({
+        'home': '/root', 'working_directory': '/srv/gateway', 'environment': {},
+    }))
     runtime.migrate_legacy(root=root)
     assert ('/srv/gateway/local/models/llm', True) in grants
     assert '"/srv/gateway/local/models/llm"' in (etc / 'environment').read_text()
@@ -1061,7 +1082,11 @@ def test_installed_auth_precedence_through_http_middleware(intent_upgrade, monke
         (root / 'opt/spacemit-ai-gateway/configs/base.yaml').unlink()
         write_file(etc / 'base.yaml', (ROOT / 'configs/base.yaml').read_text())
     elif installation == 'admin':
-        write_file(etc / 'environment', 'SPACEMIT_AI_GATEWAY_AUTH__ENABLED=true\nSPACEMIT_AI_GATEWAY_AUTH__API_KEYS=\'["admin-key"]\'\n')
+        write_file(
+            etc / 'environment',
+            'SPACEMIT_AI_GATEWAY_AUTH__ENABLED=true\n'
+            'SPACEMIT_AI_GATEWAY_AUTH__API_KEYS=\'["admin-key"]\'\n',
+        )
     runtime.migrate_legacy(root=root)
     for key in list(os.environ):
         if key.startswith('SPACEMIT_AI_GATEWAY_'):
@@ -1275,7 +1300,9 @@ def external_registered_models(intent_upgrade, monkeypatch):
         database = root / f'root/.cache/spacemit-ai-gateway/{domain}/db.sqlite'
         database.parent.mkdir(parents=True)
         with sqlite3.connect(database) as connection:
-            connection.execute('CREATE TABLE models (id TEXT PRIMARY KEY, source_type TEXT, local_path TEXT, api_key TEXT)')
+            connection.execute(
+                'CREATE TABLE models (id TEXT PRIMARY KEY, source_type TEXT, local_path TEXT, api_key TEXT)'
+            )
             connection.execute('INSERT INTO models VALUES (?, ?, ?, ?)',
                                ('bibit-' + domain, 'local_path', path, 'unchanged-private-key'))
         databases[domain] = database
@@ -1388,7 +1415,8 @@ def test_upgrade_reads_committed_wal_model_reference_without_mutating_db(externa
         runtime.migrate_legacy(root=root)
         assert acl_entries(model)[2, 60001] == 4
         assert all(path.read_bytes() == contents for path, contents in before.items())
-        assert connection.execute('SELECT local_path, api_key FROM models').fetchone() == (new_path, 'unchanged-private-key')
+        registered = connection.execute('SELECT local_path, api_key FROM models').fetchone()
+        assert registered == (new_path, 'unchanged-private-key')
     old_model = root / paths['llm'].lstrip('/')
     with pytest.raises(OSError):
         __import__('os').getxattr(old_model, 'system.posix_acl_access')
@@ -1484,7 +1512,9 @@ def test_unreadable_registered_database_preserves_upgrade_source(external_regist
 
 @pytest.mark.parametrize('omitted', ['domain', 'storage', 'db_path'])
 @pytest.mark.parametrize('admin_yaml', [False, True])
-def test_upgrade_materializes_omitted_storage_defaults_and_scans_db(external_registered_models, monkeypatch, omitted, admin_yaml):
+def test_upgrade_materializes_omitted_storage_defaults_and_scans_db(
+    external_registered_models, monkeypatch, omitted, admin_yaml
+):
     import os
     from spacemit_ai_gateway.app.settings import Settings
     root, etc, paths, _, _ = external_registered_models
@@ -1515,7 +1545,11 @@ def test_upgrade_materializes_omitted_storage_defaults_and_scans_db(external_reg
         storage = getattr(effective, domain).storage
         assert storage.db_path == f'/root/.cache/spacemit-ai-gateway/{domain}/db.sqlite'
         assert storage.base_dir == f'/root/.cache/spacemit-ai-gateway/{domain}'
-        expected = '/srv/custom-models/llm' if domain == 'llm' and omitted == 'db_path' else f'/root/.cache/models/{domain}'
+        expected = (
+            '/srv/custom-models/llm'
+            if domain == 'llm' and omitted == 'db_path'
+            else f'/root/.cache/models/{domain}'
+        )
         assert storage.models_dir == expected
     assert effective.app.port == 19001
     assert effective.embed.models == config['embed']['models']
@@ -1709,7 +1743,9 @@ def test_upgrade_frontend_listener_uses_effective_dropin(legacy_tree, monkeypatc
     assert json.loads((etc / 'legacy-context.json').read_text())['frontend_exec_start'] == command
 
 
-@pytest.mark.parametrize('command', ['', 123, '/usr/bin/python3\nUser=root', '/bin/false\rRestart=always', '/bin/false\0'])
+@pytest.mark.parametrize(
+    'command', ['', 123, '/usr/bin/python3\nUser=root', '/bin/false\rRestart=always', '/bin/false\0']
+)
 def test_upgrade_rejects_invalid_frontend_command(legacy_tree, command):
     root, etc, _ = legacy_tree
     write_file(etc / 'legacy-context.json', json.dumps({
@@ -1780,7 +1816,8 @@ def test_stopped_service_custom_environment_migrates_original_home(intent_upgrad
     assert context['home'] == '/srv/operator'
     runtime.migrate_legacy(root=root)
     assert 'HOME="/srv/operator"' in (etc / 'credentials.env').read_text()
-    assert runtime.environment_values(etc / 'credentials.env')['SPACEMIT_AI_GATEWAY_LLM__STORAGE__MODELS_DIR'] == '/srv/operator/models/llm'
+    environment = runtime.environment_values(etc / 'credentials.env')
+    assert environment['SPACEMIT_AI_GATEWAY_LLM__STORAGE__MODELS_DIR'] == '/srv/operator/models/llm'
     assert yaml.safe_load((etc / 'base.yaml').read_text())['llm']['storage']['models_dir'].startswith('/srv/operator/')
 
 
@@ -1796,7 +1833,8 @@ def test_environment_files_order_optional_and_process_precedence(tmp_path, monke
     write_file(tmp_path / 'proc/123/environ', 'HOME=/srv/process\0')
     monkeypatch.setattr(subprocess, 'run', lambda *a, **kw: subprocess.CompletedProcess(a, 0, shown, ''))
     preinst_snapshot()(root=tmp_path, proc=tmp_path / 'proc')
-    assert json.loads((etc / 'legacy-context.json').read_text())['home'] == ('/srv/process' if running else '/srv/second')
+    context = json.loads((etc / 'legacy-context.json').read_text())
+    assert context['home'] == ('/srv/process' if running else '/srv/second')
 
 
 def test_stopped_service_missing_required_environment_file_fails(tmp_path, monkeypatch):
@@ -2018,7 +2056,11 @@ def test_purge_only_removes_exact_compat_config_symlink(tmp_path, target):
     if target is not None:
         path.unlink()
         path.symlink_to(target)
-    source = (ROOT / 'debian/spacemit-ai-gateway.postrm').read_text().split("<<'PYCONFIG'\n", 1)[1].split('\nPYCONFIG', 1)[0]
+    source = (
+        (ROOT / 'debian/spacemit-ai-gateway.postrm').read_text()
+        .split("<<'PYCONFIG'\n", 1)[1]
+        .split('\nPYCONFIG', 1)[0]
+    )
     source = source.replace("Path('/opt/spacemit-ai-gateway/configs/base.yaml')", f'Path({str(path)!r})')
     exec(compile(source, 'postrm-PYCONFIG', 'exec'), {})
     if target == '/etc/spacemit-ai-gateway/base.yaml':
@@ -2121,7 +2163,11 @@ def test_systemd_environment_file_rejects_invalid_characters(tmp_path, invalid, 
 
 def test_environment_file_parser_copies_remain_identical():
     import ast
-    preinst = (ROOT / 'debian/spacemit-ai-gateway.preinst').read_text().split("<<'PYCONTEXT'\n", 1)[1].split('\nPYCONTEXT', 1)[0]
+    preinst = (
+        (ROOT / 'debian/spacemit-ai-gateway.preinst').read_text()
+        .split("<<'PYCONTEXT'\n", 1)[1]
+        .split('\nPYCONTEXT', 1)[0]
+    )
     functions = []
     for source in ((ROOT / 'debian/runtime.py').read_text(), preinst):
         functions.append(next(node for node in ast.parse(source).body
@@ -2174,15 +2220,19 @@ def test_complete_admin_etc_config_acl_survives_atomic_migration(tmp_path, ident
         'environment': {'SPACEMIT_AI_GATEWAY_CONFIG': '/etc/spacemit-ai-gateway/base.yaml'}}))
     unit = tmp_path / ('etc/systemd/system/spacemit-ai-gateway.service' if identity_source == 'unit'
                        else 'etc/systemd/system/spacemit-ai-gateway.service.d/zz-admin.conf')
-    write_file(unit, '[Service]\nUser=60002\nEnvironment=SPACEMIT_AI_GATEWAY_CONFIG=/etc/spacemit-ai-gateway/base.yaml\n')
+    write_file(
+        unit,
+        '[Service]\nUser=60002\n'
+        'Environment=SPACEMIT_AI_GATEWAY_CONFIG=/etc/spacemit-ai-gateway/base.yaml\n',
+    )
     current.chmod(0o640)
     runtime.grant_storage_access(tmp_path, [('/etc/spacemit-ai-gateway/base.yaml', False)], uid=uid)
-    assert any(tag == 2 and identifier == uid and bits == 4
-               for tag, bits, identifier in __import__('struct').iter_unpack('<HHI', os.getxattr(current, 'system.posix_acl_access')[4:]))
+    acl = __import__('struct').iter_unpack('<HHI', os.getxattr(current, 'system.posix_acl_access')[4:])
+    assert any(tag == 2 and identifier == uid and bits == 4 for tag, bits, identifier in acl)
     runtime.migrate_legacy(tmp_path)
     assert current.stat().st_ino != inode
-    assert any(tag == 2 and identifier == uid and bits == 4
-               for tag, bits, identifier in __import__('struct').iter_unpack('<HHI', os.getxattr(current, 'system.posix_acl_access')[4:]))
+    acl = __import__('struct').iter_unpack('<HHI', os.getxattr(current, 'system.posix_acl_access')[4:])
+    assert any(tag == 2 and identifier == uid and bits == 4 for tag, bits, identifier in acl)
 
 
 def test_purge_archives_migration_recovery_and_reinstall_is_fresh(tmp_path):
@@ -2240,7 +2290,9 @@ def test_nonroot_upgrade_repairs_only_exact_old_generated_dropin(legacy_tree, se
     ('zz-admin.conf', 'runtime-user.conf', True),
     ('aa-admin.conf', 'runtime-user.conf', False),
 ])
-def test_custom_uid_dropin_order_keeps_generated_account_migration(legacy_tree, monkeypatch, admin_name, generated_name, expect_admin):
+def test_custom_uid_dropin_order_keeps_generated_account_migration(
+    legacy_tree, monkeypatch, admin_name, generated_name, expect_admin
+):
     monkeypatch.setattr(runtime, "grant_storage_access", lambda root, paths, **kwargs: None)
     root, etc, _ = legacy_tree
     directory = root / 'etc/systemd/system/spacemit-ai-gateway.service.d'

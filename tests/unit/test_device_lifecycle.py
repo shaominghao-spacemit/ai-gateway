@@ -64,8 +64,23 @@ class LifecycleTests(unittest.TestCase):
                     patch.object(lifecycle, 'api', return_value={'domains': {'asr': {'state': 'idle'}}}), \
                     patch.object(lifecycle.pwd, 'getpwnam', return_value=SimpleNamespace(pw_uid=123, pw_gid=123)), \
                     patch.object(lifecycle.os, 'chown'), \
-                    patch.object(lifecycle.subprocess, 'run', return_value=SimpleNamespace(returncode=0, stdout=json.dumps({'home': str(home), 'models': str(home / 'models/llm')}))), \
-                    patch.object(lifecycle, 'Path', side_effect=lambda path: unit if str(path) == '/etc/systemd/system/' + lifecycle.UNITS[0] else probe if str(path) == '/proc/123/environ' else Path(path)), \
+                    patch.object(
+                        lifecycle.subprocess,
+                        'run',
+                        return_value=SimpleNamespace(
+                            returncode=0,
+                            stdout=json.dumps({'home': str(home), 'models': str(home / 'models/llm')}),
+                        ),
+                    ), \
+                    patch.object(
+                        lifecycle,
+                        'Path',
+                        side_effect=lambda path: unit
+                        if str(path) == '/etc/systemd/system/' + lifecycle.UNITS[0]
+                        else probe
+                        if str(path) == '/proc/123/environ'
+                        else Path(path),
+                    ), \
                     patch.object(self.job, 'restore') as restore, \
                     patch.object(self.job, 'stop_services') as stop, \
                     patch.object(self.job, 'install', side_effect=install):
@@ -1419,7 +1434,11 @@ class ManagedLifecycleTests(unittest.TestCase):
                 owner = None
                 with patch.object(lifecycle, 'ENGINE_LOCK', engine), \
                         patch.object(lifecycle.grp, 'getgrnam', return_value=SimpleNamespace(gr_gid=123)), \
-                        patch.object(lifecycle, 'request', side_effect=lambda path, *a: (401 if 'status?' in path else 403, b'')), \
+                        patch.object(
+                            lifecycle,
+                            'request',
+                            side_effect=lambda path, *a: (401 if 'status?' in path else 403, b''),
+                        ), \
                         patch.object(lifecycle, 'api', side_effect=api), \
                         patch.object(self.job, 'stalled_managed_release') as stalled:
                     case = dict(model='qwen3_asr_0.6b', language='zh', expect_text='expected')
@@ -1428,7 +1447,9 @@ class ManagedLifecycleTests(unittest.TestCase):
                             self.job.managed_case(case, b'real speech fixture')
                     else:
                         # 故障注入助手自行释放，模拟其真实释放行为。
-                        stalled.side_effect = lambda owner, token, *args: api('/release', self.job.key, {'owner': owner, 'token': token})
+                        stalled.side_effect = lambda owner, token, *args: api(
+                            '/release', self.job.key, {'owner': owner, 'token': token}
+                        )
                         self.job.managed_case(case, b'real speech fixture')
                         stalled.assert_called_once()
                 self.assertEqual(released, [True])

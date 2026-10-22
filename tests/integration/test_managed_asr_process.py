@@ -207,7 +207,10 @@ def test_participant_marker_requires_live_exclusive_flock(tmp_path):
     marker.touch(mode=0o644)
     assert not cooperative_participant(123, str(lock))
     # 子进程真实持锁；留存文件/释放锁均不能当协作证据。
-    code = "import fcntl,sys; f=open(sys.argv[1], 'r+b'); fcntl.flock(f, fcntl.LOCK_EX); print('ready',flush=True); input()"
+    code = (
+        "import fcntl,sys; f=open(sys.argv[1], 'r+b'); fcntl.flock(f, fcntl.LOCK_EX); "
+        "print('ready',flush=True); input()"
+    )
     child = subprocess.Popen([sys.executable, '-c', code, str(marker)],
                              stdin=subprocess.PIPE, stdout=subprocess.PIPE)
     try:

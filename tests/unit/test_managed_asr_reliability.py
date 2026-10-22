@@ -41,7 +41,9 @@ async def legacy_service(tmp_path, monkeypatch):
             os.unlink(path)
 
 
-@pytest.mark.parametrize('failure', ['unknown', 'unregistered', 'lock', 'foreign', 'foreign_error', 'download', 'cancel'])
+@pytest.mark.parametrize(
+    'failure', ['unknown', 'unregistered', 'lock', 'foreign', 'foreign_error', 'download', 'cancel']
+)
 async def test_rejected_legacy_load_can_acquire_managed(legacy_service, monkeypatch, failure):
     service = legacy_service
     model = 'sensevoice'

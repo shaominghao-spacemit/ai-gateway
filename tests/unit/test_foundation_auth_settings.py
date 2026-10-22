@@ -141,7 +141,9 @@ def test_write_denied_before_side_effect_and_cors_works(monkeypatch, method):
         assert getattr(client, method)("/write", headers={"X-API-Key": "device-key"}).status_code == 200
         assert getattr(client, method)("/write", headers={"Authorization": "Bearer device-key"}).status_code == 200
         assert client.get("/healthz").status_code == 200
-        assert client.options("/write", headers={"Origin": "http://console", "Access-Control-Request-Method": "POST"}).status_code == 200
+        assert client.options(
+            "/write", headers={"Origin": "http://console", "Access-Control-Request-Method": "POST"}
+        ).status_code == 200
     assert app.state.calls == 2
 
 
@@ -458,7 +460,12 @@ ws.onmessage = event => {
 };
 ws.onerror = event => { console.error(event.message); clearTimeout(timer); process.exitCode = 1; };
 """
-            result = subprocess.run([node, "-e", script, f"ws://127.0.0.1:{port}/v1/vad/stream"], capture_output=True, text=True, timeout=5)
+            result = subprocess.run(
+                [node, "-e", script, f"ws://127.0.0.1:{port}/v1/vad/stream"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
             assert result.returncode == 0, result.stdout + result.stderr
         finally:
             server.should_exit = True
