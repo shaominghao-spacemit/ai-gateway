@@ -36,6 +36,7 @@ ETC = Path('/etc') / PACKAGE
 DATA = Path('/var/lib') / PACKAGE
 MODEL = Path('/opt/bibit/models/vad/silero_vad.onnx')
 ENGINE_LOCK = Path('/run/lock/bibit-asr/engine.lock')
+APT_CACHE = Path('/var/cache/apt/archives')
 INTENT_APP = Path('/opt/bibit-intent')
 INTENT_CONFIG = Path('/etc/bibit-intent/inference.env')
 DOMAINS = {'asr', 'tts', 'vad', 'llm', 'embed', 'rerank', 'vlm', 'vision'}
@@ -464,6 +465,13 @@ print(json.dumps([str(Path(getattr(settings, domain).storage.db_path).expanduser
                 path.rmdir()
         self.checked('external-model-databases-restored')
 
+    def fetch_old_deb(self):
+        cached = APT_CACHE / f'{PACKAGE}_{self.old_version}_riscv64.deb'
+        if cached.is_file():
+            shutil.copy2(cached, self.backup / cached.name)
+            return
+        run('apt-get', 'download', f'{PACKAGE}={self.old_version}', cwd=self.backup, timeout=300)
+
     def prepare(self):
         # 必须先校验哈希；错误输入不能创建目录、更不能改包或服务。
         require(re.fullmatch(r'[0-9a-fA-F]{64}', self.args.expect_sha256), 'invalid SHA256')
@@ -488,7 +496,7 @@ print(json.dumps([str(Path(getattr(settings, domain).storage.db_path).expanduser
         self.backup = Path(tempfile.mkdtemp(prefix='gateway-backup-', dir=evidence))
         os.chmod(self.backup, 0o700)
         if self.old_version:
-            run('apt-get', 'download', f'{PACKAGE}={self.old_version}', cwd=self.backup, timeout=300)
+            self.fetch_old_deb()
             candidates = list(self.backup.glob('*.deb'))
             require(len(candidates) == 1, 'exact rollback package was not downloaded')
             self.old_deb = candidates[0]

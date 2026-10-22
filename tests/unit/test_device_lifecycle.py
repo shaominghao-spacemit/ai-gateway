@@ -425,6 +425,30 @@ class LifecycleTests(unittest.TestCase):
         restart.assert_called_once()
         vad.assert_called_once()
 
+    def test_exact_cached_rollback_deb_avoids_network(self):
+        cache = self.root / 'apt-cache'
+        cache.mkdir()
+        package = cache / f'{lifecycle.PACKAGE}_0.0.17_riscv64.deb'
+        package.write_bytes(b'cached rollback')
+        self.job.old_version = '0.0.17'
+        self.backup()
+        with patch.object(lifecycle, 'APT_CACHE', cache), patch.object(lifecycle, 'run') as run:
+            self.job.fetch_old_deb()
+        self.assertEqual((self.job.backup / package.name).read_bytes(), b'cached rollback')
+        run.assert_not_called()
+
+    def test_missing_cached_rollback_deb_uses_apt_download(self):
+        cache = self.root / 'apt-cache'
+        cache.mkdir()
+        self.job.old_version = '0.0.17'
+        self.backup()
+        with patch.object(lifecycle, 'APT_CACHE', cache), \
+                patch.object(lifecycle, 'run') as run:
+            self.job.fetch_old_deb()
+        run.assert_called_once_with(
+            'apt-get', 'download', f'{lifecycle.PACKAGE}=0.0.17',
+            cwd=self.job.backup, timeout=300)
+
     def test_unavailable_exact_old_deb_stops_before_mutation(self):
         model = self.root / 'silero_vad.onnx'
         model.write_bytes(b'model')
@@ -442,7 +466,9 @@ class LifecycleTests(unittest.TestCase):
             self.fail('unexpected command')
 
         with patch.object(lifecycle.os, 'geteuid', return_value=0), \
-                patch.object(lifecycle, 'MODEL', model), patch.object(lifecycle, 'run', side_effect=run), \
+                patch.object(lifecycle, 'MODEL', model), \
+                patch.object(lifecycle, 'APT_CACHE', self.root / 'empty-apt-cache'), \
+                patch.object(lifecycle, 'run', side_effect=run), \
                 patch.object(lifecycle, 'protected_packages', return_value=[]), \
                 patch.object(self.job, 'exercise') as exercise, \
                 patch.object(self.job, 'restore') as restore:
