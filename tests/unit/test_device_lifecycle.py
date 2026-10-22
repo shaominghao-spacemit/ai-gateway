@@ -1622,13 +1622,21 @@ class LegacyIntentTests(unittest.TestCase):
         self.assertLessEqual(kwargs['timeout'], 450)
         self.assertTrue(any(c[0][:2] == ('systemctl', 'stop') for c in calls))
 
-    def test_context_requires_a_complete_original_installation(self):
+    def _intent_files(self, executable=True):
         app = self.root / 'original-intent'
         config = self.root / 'inference.env'
-        files = [config, app / 'main.py', app / '.venv/pyvenv.cfg', app / 'src/client.py']
+        files = [config, app / 'main.py', app / '.venv/pyvenv.cfg', app / '.venv/bin/python',
+                 app / 'src/client.py']
         for file in files:
             file.parent.mkdir(parents=True, exist_ok=True)
             file.write_text('original bytes\n')
+            file.chmod(0o755 if executable and file.name == 'python' else 0o644)
+        for directory in (self.root, app, app / '.venv', app / '.venv/bin', app / 'src'):
+            directory.chmod(0o755)
+        return app, config, files
+
+    def test_context_requires_a_complete_original_installation(self):
+        app, config, files = self._intent_files()
         calls = []
         def run(*command, **kwargs):
             calls.append(command)
@@ -1649,16 +1657,50 @@ class LegacyIntentTests(unittest.TestCase):
             lookup.assert_called_once_with(1000)
             (app / 'main.py').unlink()
             calls.clear()
-            with self.assertRaisesRegex(lifecycle.CheckFailed, 'installation/configuration missing'):
+            with self.assertRaisesRegex(lifecycle.CheckFailed, 'Intent file is missing'):
                 self.job.intent_context()
             self.assertEqual(len(calls), 1)
 
+    def test_context_rejects_untrusted_intent_sources(self):
+        app, config, files = self._intent_files()
+        def run(*command, **kwargs):
+            if command[0] == 'dpkg-query':
+                output = 'install ok installed\n0.1.89'
+            elif command[1] == 'list-sessions':
+                output = '1 ignored\n'
+            else:
+                output = 'Type=wayland\nUser=1000\n'
+            return subprocess.CompletedProcess(command, 0, output)
+        cases = (
+            ('writable', lambda: (app / 'src/client.py').chmod(0o666), 'writable by others'),
+            ('symlink', lambda: self._replace_with_symlink(app / 'src/client.py', config),
+             'Intent file is a symlink'),
+            ('parent-symlink', lambda: self._replace_directory_with_symlink(app / 'src', app / 'source'),
+             'Intent source parent is not a regular directory'),
+        )
+        for name, mutate, message in cases:
+            with self.subTest(case=name):
+                for file in files:
+                    file.unlink(missing_ok=True)
+                self._intent_files()
+                mutate()
+                with patch.object(lifecycle, 'INTENT_APP', app), \
+                        patch.object(lifecycle, 'INTENT_CONFIG', config), \
+                        patch.object(lifecycle, 'run', side_effect=run):
+                    with self.assertRaisesRegex(lifecycle.CheckFailed, message):
+                        self.job.intent_context()
+
+    def _replace_with_symlink(self, path, target):
+        path.unlink()
+        path.symlink_to(target)
+
+    def _replace_directory_with_symlink(self, path, target):
+        import shutil
+        shutil.move(str(path), target)
+        path.symlink_to(target, target_is_directory=True)
+
     def test_context_rejects_missing_or_ambiguous_graphical_users(self):
-        app = self.root / 'original-intent'
-        config = self.root / 'inference.env'
-        for file in (config, app / 'main.py', app / '.venv/pyvenv.cfg', app / 'src/client.py'):
-            file.parent.mkdir(parents=True, exist_ok=True)
-            file.touch()
+        app, config, _ = self._intent_files()
         for users in ([], [('tty', 1000)], [('wayland', 0)],
                       [('wayland', 1000), ('x11', 1001)]):
             with self.subTest(users=users):

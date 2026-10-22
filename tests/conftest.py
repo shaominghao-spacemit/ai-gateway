@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import socket
 from typing import AsyncGenerator, List
 
 import httpx
@@ -252,7 +253,11 @@ def host_gateway_config(tmp_path, monkeypatch):
 
     lock = tmp_path / "engine.lock"
     lock.touch(mode=0o660)
-    config["asr"].setdefault("managed", {})["lock_path"] = str(lock)
+    managed = config["asr"].setdefault("managed", {})
+    managed["lock_path"] = str(lock)
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        managed.setdefault("qwen3", {})["port"] = sock.getsockname()[1]
 
     config_path = tmp_path / "base.yaml"
     config_path.write_text(yaml.safe_dump(config, allow_unicode=True), encoding="utf-8")

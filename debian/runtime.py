@@ -300,6 +300,26 @@ def legacy_default_assets(home, cache_home):
     return paths
 
 
+def validate_working_directory(value):
+    if (not isinstance(value, str) or not value.startswith('/')
+            or any(char in value for char in '\0\r\n') or '..' in Path(value).parts):
+        raise RuntimeError('Invalid legacy working directory')
+    return value
+
+
+def validate_frontend_command(value):
+    if (not isinstance(value, str) or not value.strip()
+            or any(char in value for char in '\0\r\n')):
+        raise RuntimeError('Invalid legacy frontend start command')
+    try:
+        command = shlex.split(value, comments=False)
+    except ValueError as exc:
+        raise RuntimeError('Invalid legacy frontend start command') from exc
+    if not command or not Path(command[0]).is_absolute():
+        raise RuntimeError('Invalid legacy frontend start command')
+    return value
+
+
 def materialize(value, home, working_directory="/opt/spacemit-ai-gateway"):
     if value == "~" or value.startswith("~/"):
         return home + value[1:]
@@ -560,11 +580,11 @@ def migrate_legacy(root=Path("/")):
         match = pattern.fullmatch(old_dropin.read_text())
         if match:
             context["home"] = match[2]
+    working_directory = validate_working_directory(
+        context.get("working_directory", "/opt/spacemit-ai-gateway"))
     frontend_command = context.get("frontend_exec_start")
     if frontend_command is not None:
-        if (not isinstance(frontend_command, str) or not frontend_command.strip() or
-                any(char in frontend_command for char in "\r\n\0")):
-            raise RuntimeError("Invalid legacy frontend start command")
+        validate_frontend_command(frontend_command)
         frontend_dropin = root / "etc/systemd/system/spacemit-ai-gateway-frontend.service.d/legacy-listener.conf"
         if not frontend_dropin.exists() and not frontend_dropin.is_symlink():
             frontend_dropin.parent.mkdir(parents=True, exist_ok=True)
@@ -605,7 +625,7 @@ def migrate_legacy(root=Path("/")):
                 domain = config.get(name, {})
                 value = domain.get("model_dir") if isinstance(domain, dict) else None
                 if isinstance(value, str) and value:
-                    absolute = materialize(value, home, context.get("working_directory", "/opt/spacemit-ai-gateway"))
+                    absolute = materialize(value, home, working_directory)
                     if override and absolute != value:
                         inherited.setdefault(f"SPACEMIT_AI_GATEWAY_{name.upper()}__MODEL_DIR", absolute)
                     domain["model_dir"] = absolute
@@ -617,10 +637,10 @@ def migrate_legacy(root=Path("/")):
                     value = domain["storage"].get(field)
                     if isinstance(value, str):
                         absolute = materialize(
-                            value, home, context.get("working_directory", "/opt/spacemit-ai-gateway"))
+                            value, home, working_directory)
                         if not Path(absolute).is_absolute():
                             absolute = str(
-                                Path(context.get("working_directory", "/opt/spacemit-ai-gateway")) / absolute)
+                                Path(working_directory) / absolute)
                         if override and absolute != value:
                             inherited.setdefault(
                                 f"SPACEMIT_AI_GATEWAY_{domain_name.upper()}__STORAGE__{field.upper()}", absolute)
@@ -666,7 +686,7 @@ def migrate_legacy(root=Path("/")):
             for index, line in enumerate(lines):
                 key = line.partition("=")[0].strip()
                 if (storage_field(key) or model_directory_field(key) or key == "XDG_CACHE_HOME") and key in values:
-                    value = materialize(values[key], home, context.get("working_directory", "/opt/spacemit-ai-gateway"))
+                    value = materialize(values[key], home, working_directory)
                     lines[index] = env_line(key, value)
                     values[key] = value
                     if key != "XDG_CACHE_HOME":
@@ -678,7 +698,7 @@ def migrate_legacy(root=Path("/")):
         for key in list(inherited):
             if storage_field(key) or model_directory_field(key) or key == "XDG_CACHE_HOME":
                 inherited[key] = materialize(
-                    inherited[key], home, context.get("working_directory", "/opt/spacemit-ai-gateway"))
+                    inherited[key], home, working_directory)
                 value = inherited[key]
                 if key != "XDG_CACHE_HOME":
                     paths.append((str(Path(value).parent) if key.endswith("DB_PATH") else value, True))
@@ -688,7 +708,7 @@ def migrate_legacy(root=Path("/")):
             if storage_field(key) and key.upper().endswith("__DB_PATH"):
                 domain = key.removeprefix("SPACEMIT_AI_GATEWAY_").split("__")[0].upper()
                 databases[domain] = materialize(
-                    value, home, context.get("working_directory", "/opt/spacemit-ai-gateway"))
+                    value, home, working_directory)
         paths.extend(registered_model_paths(root, databases.values()))
         effective_home = effective.get("HOME", home)
         paths.extend(legacy_default_assets(effective_home, effective.get("XDG_CACHE_HOME", "~/.cache")))

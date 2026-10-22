@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import io
 import re
+import socket
 import sqlite3
 import tarfile
 from pathlib import Path
@@ -474,8 +475,11 @@ def _asr_service(tmp_path, url):
 
     lock = tmp_path / "engine.lock"
     lock.touch(mode=0o660)
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
     cfg = AsrConfig(
-        managed={"lock_path": str(lock)},
+        managed={"lock_path": str(lock), "qwen3": {"port": port}},
         model_dir=str(tmp_path / "asr" / "sensevoice"),
         models=[{"id": "sensevoice", "url": url, "archive_subdir": "sensevoice"}],
         backends=["sensevoice", "qwen3-asr"],

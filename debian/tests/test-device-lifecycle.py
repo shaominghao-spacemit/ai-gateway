@@ -65,6 +65,47 @@ def sha256(path):
     return digest.hexdigest()
 
 
+def _intent_owner():
+    return 0 if os.geteuid() == 0 else os.geteuid()
+
+
+def _validate_intent_root(root):
+    root = Path(root)
+    info = root.lstat()
+    require(stat.S_ISDIR(info.st_mode) and not stat.S_ISLNK(info.st_mode),
+            'Intent source directory is not a regular directory')
+    require(info.st_uid == _intent_owner(), 'Intent source directory has an unexpected owner')
+    require(not info.st_mode & 0o022, 'Intent source directory is writable by others')
+    return root
+
+
+def _validate_intent_file(path, root, allow_symlink=False):
+    path = Path(path)
+    require(path.is_file(), f'Intent file is missing: {path}')
+    relative = path.relative_to(root)
+    current = _validate_intent_root(root)
+    for part in relative.parts[:-1]:
+        current = current / part
+        info = current.lstat()
+        require(stat.S_ISDIR(info.st_mode) and not stat.S_ISLNK(info.st_mode),
+                'Intent source parent is not a regular directory')
+        require(info.st_uid == _intent_owner(), 'Intent source parent has an unexpected owner')
+        require(not info.st_mode & 0o022, 'Intent source parent is writable by others')
+    info = path.lstat()
+    if stat.S_ISLNK(info.st_mode):
+        require(allow_symlink, f'Intent file is a symlink: {path}')
+        require(info.st_uid == _intent_owner(), f'Intent file has an unexpected owner: {path}')
+        target = path.resolve(strict=True)
+        target_info = target.stat()
+        require(stat.S_ISREG(target_info.st_mode), f'Intent file is not regular: {path}')
+        require(target_info.st_uid == _intent_owner(), f'Intent file has an unexpected owner: {path}')
+        require(not target_info.st_mode & 0o022, f'Intent file is writable by others: {path}')
+    else:
+        require(stat.S_ISREG(info.st_mode), f'Intent file is not regular: {path}')
+        require(info.st_uid == _intent_owner(), f'Intent file has an unexpected owner: {path}')
+        require(not info.st_mode & 0o022, f'Intent file is writable by others: {path}')
+
+
 _SENSITIVE_DIAGNOSTIC = re.compile(
     r'(?i)(["\']?(?:api[_ -]?key|token|password|secret|authorization|bearer)["\']?)'
     r'(\s*(?:(?:[=:]\s*)?(?:bearer\s+)?|[a-z]+\s+))[^\s,;]+')
@@ -600,8 +641,16 @@ with tempfile.TemporaryDirectory(prefix='lifecycle-write-', dir=data) as tempora
         if state.returncode or not state.stdout.startswith('install ok installed\n'):
             return None
         files = [INTENT_CONFIG, INTENT_APP / 'main.py', INTENT_APP / '.venv/pyvenv.cfg',
-                 *sorted((INTENT_APP / 'src').rglob('*.py'))]
-        require(len(files) > 3 and all(path.is_file() for path in files),
+                 INTENT_APP / '.venv/bin/python', *sorted((INTENT_APP / 'src').rglob('*.py'))]
+        _validate_intent_file(INTENT_CONFIG, INTENT_CONFIG.parent)
+        _validate_intent_file(INTENT_APP / 'main.py', INTENT_APP)
+        _validate_intent_file(INTENT_APP / '.venv/pyvenv.cfg', INTENT_APP)
+        _validate_intent_file(INTENT_APP / '.venv/bin/python', INTENT_APP, allow_symlink=True)
+        require(os.access(INTENT_APP / '.venv/bin/python', os.X_OK),
+                'original Intent Python is not executable')
+        for path in sorted((INTENT_APP / 'src').rglob('*.py')):
+            _validate_intent_file(path, INTENT_APP)
+        require(len(files) > 4 and all(path.is_file() for path in files),
                 'original Intent installation/configuration missing')
         users = set()
         for session in run('loginctl', 'list-sessions', '--no-legend', '--no-pager').stdout.splitlines():

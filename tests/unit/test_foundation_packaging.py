@@ -1084,6 +1084,20 @@ def test_upgrade_preserves_relative_admin_environment_paths(intent_upgrade):
     assert '"/srv/gateway/local/models/llm"' in (etc / 'environment').read_text()
 
 
+@pytest.mark.parametrize('working_directory', [
+    'srv/gateway', '/srv/../etc', '/srv/gateway\nRuntimeDirectory=evil', '/srv/gateway\0', 123,
+])
+def test_upgrade_rejects_invalid_working_directory(intent_upgrade, working_directory):
+    root, etc, _, grants = intent_upgrade
+    write_file(etc / 'legacy-context.json', json.dumps({
+        'home': '/root', 'working_directory': working_directory, 'environment': {},
+    }))
+    with pytest.raises(RuntimeError, match='Invalid legacy working directory'):
+        runtime.migrate_legacy(root=root)
+    assert not (etc / 'base.yaml').exists()
+    assert grants == []
+
+
 @pytest.mark.parametrize('installation', ['legacy', 'fresh', 'admin'])
 def test_installed_auth_precedence_through_http_middleware(intent_upgrade, monkeypatch, installation):
     import os
@@ -1760,7 +1774,8 @@ def test_upgrade_frontend_listener_uses_effective_dropin(legacy_tree, monkeypatc
 
 
 @pytest.mark.parametrize(
-    'command', ['', 123, '/usr/bin/python3\nUser=root', '/bin/false\rRestart=always', '/bin/false\0']
+    'command', ['', 123, '/usr/bin/python3\nUser=root', '/bin/false\rRestart=always', '/bin/false\0',
+                'python3 -m http.server', '"/usr/bin/python3 -m http.server']
 )
 def test_upgrade_rejects_invalid_frontend_command(legacy_tree, command):
     root, etc, _ = legacy_tree
