@@ -66,8 +66,8 @@ def sha256(path):
 
 
 _SENSITIVE_DIAGNOSTIC = re.compile(
-    r'(?i)(api[_ -]?key|token|password|secret|authorization|bearer)'
-    r'(\s*[=:]\s*)[^\s,;]+')
+    r'(?i)(["\']?(?:api[_ -]?key|token|password|secret|authorization|bearer)["\']?)'
+    r'(\s*(?:(?:[=:]\s*)?(?:bearer\s+)?|[a-z]+\s+))[^\s,;]+')
 
 
 def safe_diagnostic(text):

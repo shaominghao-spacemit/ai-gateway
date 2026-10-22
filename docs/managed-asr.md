@@ -47,7 +47,8 @@ status 按本次查询语言判断能力，不要求等于 acquire 初始语言�
 Voice 的 SenseVoice 与其本地实现一致固定请求 `auto`，保留 Qwen3 的语言列表偏好。
 固定语言不要求 SDK 动态 setter；仅请求改变已加载引擎语言时调用 `Engine.set_language`，
 无 setter 则明确报 `sensevoice_dynamic_language_unsupported`，不静默变更语言。
-宿主 worker 协议测试覆盖有/无 setter；真实 SDK、两模型效果与 T18 仍待板验。
+宿主 worker 协议测试覆盖有/无 setter；K3DEB1 新包联合验收已用真实 SDK 验证
+SenseVoice、Qwen3-ASR 的 local/gateway 路径及 T18，结果为 `ok`。
 
 错误沿用 Gateway DomainError 响应封装。非法模型/语言为 422；owner/token 不匹配为 403；
 资源占有、旧模型、未知进程等冲突为 409；受管后端启动/健康失败为 503。
@@ -210,7 +211,8 @@ size、mtime_ns、ctime_ns 和 runtime distribution 版本缓存；每次 status
 须按平台排空流程一同更新 CLI/daemon/worker；不能直接把新 CLI 连到旧 daemon 当作已升级。
 
 模型/运行库/清单须在设备预先就绪，管理员配置指向它们；验收只临时 opt-in，结束恢复原配置。
-仅平台独占租约内由负责人执行。此任务未上板，宿主的厂商推理替身不构成真模型证据。
+仅平台独占租约内由负责人执行。宿主厂商推理替身只用于回归测试，不构成真模型证据；
+本轮已由 K3DEB1 新包联合验收补充真实双模型结果。
 未知 Voice/llama 或本地 engine 持锁时阻塞本轮验收，不自动停止 Voice。
 
 验收包括鉴权、精确目标状态、真实语音/期望文本、语言切换、错 owner/token 不能释放、
@@ -233,7 +235,8 @@ Voice postinst 已实现按确认 UID 授权的精确 ACL，双方配置一致�
 宿主回归：`.agent-delivery.toml` 的 `[verify].regression`。
 新增测试在 `tests/unit/test_managed_asr.py`、`test_managed_asr_assets.py`、
 `test_device_lifecycle.py`、`test_managed_asr_worker.py` 及 `tests/integration/test_managed_asr_process.py`。
-真实 SDK 能力、板端 runtime/完整库清单、T18 SenseVoice 语义及旧 session 权限须保留待验。
+真实 SDK 能力、板端 runtime/完整库清单、T18 SenseVoice 语义已由 K3DEB1
+新包联合验收覆盖；旧登录 session 的实际 ACL 访问仍须单独板验。
 
 ## 升级兼容：保留旧 Intent 与缓存
 

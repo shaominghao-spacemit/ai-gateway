@@ -209,6 +209,15 @@ class LifecycleTests(unittest.TestCase):
         self.assertIn('super-secret', raised.exception.detail)
         self.assertNotIn('super-secret', str(raised.exception))
 
+    def test_json_diagnostic_keys_are_redacted(self):
+        text = ('{"recovery_secret": "private-secret", "api-key": "private-key", '
+                '"token": "private-token"}\n'
+                'Authorization: Bearer private-bearer')
+        safe = lifecycle.safe_diagnostic(text)
+        for value in ('private-secret', 'private-key', 'private-token', 'private-bearer'):
+            self.assertNotIn(value, safe)
+            self.assertIn('[redacted]', safe)
+
     def test_failed_command_detail_is_private_backup_log(self):
         self.backup()
         failure = lifecycle.CheckFailed('dpkg failed (exit 1): package configuration failed',
