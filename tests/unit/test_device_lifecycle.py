@@ -1722,6 +1722,63 @@ class LegacyIntentTests(unittest.TestCase):
             with self.assertRaisesRegex(lifecycle.CheckFailed, 'unexpected owner'):
                 self.job.intent_context()
 
+    def test_context_accepts_service_group_writable_sources(self):
+        app, config, _ = self._intent_files()
+        source = app / 'src'
+        source.chmod(0o775)
+        real_lstat = Path.lstat
+        def lstat(path):
+            info = real_lstat(path)
+            if path == source:
+                info = os.stat_result((info.st_mode, info.st_ino, info.st_dev, info.st_nlink,
+                                       info.st_uid, 1001, info.st_size, info.st_atime,
+                                       info.st_mtime, info.st_ctime))
+            return info
+        def run(*command, **kwargs):
+            if command[0] == 'dpkg-query':
+                output = 'install ok installed\n0.1.89'
+            elif command[1] == 'list-sessions':
+                output = '1 ignored\n'
+            else:
+                output = 'Type=wayland\nUser=1000\n'
+            return subprocess.CompletedProcess(command, 0, output)
+        account = SimpleNamespace(pw_uid=1000, pw_gid=1001, pw_dir='/home/original')
+        with patch.object(lifecycle, 'INTENT_APP', app), \
+                patch.object(lifecycle, 'INTENT_CONFIG', config), \
+                patch.object(lifecycle, 'run', side_effect=run), \
+                patch.object(lifecycle.pwd, 'getpwuid', return_value=account), \
+                patch.object(lifecycle.Path, 'lstat', new=lstat):
+            self.assertEqual(self.job.intent_context()['uid'], 1000)
+
+    def test_context_rejects_untrusted_group_writable_sources(self):
+        app, config, _ = self._intent_files()
+        source = app / 'src'
+        source.chmod(0o775)
+        real_lstat = Path.lstat
+        def lstat(path):
+            info = real_lstat(path)
+            if path == source:
+                info = os.stat_result((info.st_mode, info.st_ino, info.st_dev, info.st_nlink,
+                                       info.st_uid, 2002, info.st_size, info.st_atime,
+                                       info.st_mtime, info.st_ctime))
+            return info
+        def run(*command, **kwargs):
+            if command[0] == 'dpkg-query':
+                output = 'install ok installed\n0.1.89'
+            elif command[1] == 'list-sessions':
+                output = '1 ignored\n'
+            else:
+                output = 'Type=wayland\nUser=1000\n'
+            return subprocess.CompletedProcess(command, 0, output)
+        account = SimpleNamespace(pw_uid=1000, pw_gid=1001, pw_dir='/home/original')
+        with patch.object(lifecycle, 'INTENT_APP', app), \
+                patch.object(lifecycle, 'INTENT_CONFIG', config), \
+                patch.object(lifecycle, 'run', side_effect=run), \
+                patch.object(lifecycle.pwd, 'getpwuid', return_value=account), \
+                patch.object(lifecycle.Path, 'lstat', new=lstat):
+            with self.assertRaisesRegex(lifecycle.CheckFailed, 'untrusted writable group'):
+                self.job.intent_context()
+
     def test_context_rejects_untrusted_intent_sources(self):
         app, config, files = self._intent_files()
         def run(*command, **kwargs):

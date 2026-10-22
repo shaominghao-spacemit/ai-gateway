@@ -72,22 +72,24 @@ def _intent_owner_allowed(uid, service_uid):
     return uid in (0, service_uid)
 
 
-def _validate_intent_root(root, service_uid):
+def _validate_intent_root(root, service_uid, service_gid):
     root = Path(root)
     info = root.lstat()
     require(stat.S_ISDIR(info.st_mode) and not stat.S_ISLNK(info.st_mode),
             'Intent source directory is not a regular directory')
     require(_intent_owner_allowed(info.st_uid, service_uid),
             'Intent source directory has an unexpected owner')
-    require(not info.st_mode & 0o022, 'Intent source directory is writable by others')
+    require(not info.st_mode & 0o002, 'Intent source directory is writable by others')
+    require(not info.st_mode & 0o020 or info.st_gid in (0, service_gid),
+            'Intent source directory has an untrusted writable group')
     return root
 
 
-def _validate_intent_file(path, root, service_uid, allow_symlink=False):
+def _validate_intent_file(path, root, service_uid, service_gid, allow_symlink=False):
     path = Path(path)
     require(path.is_file(), f'Intent file is missing: {path}')
     relative = path.relative_to(root)
-    current = _validate_intent_root(root, service_uid)
+    current = _validate_intent_root(root, service_uid, service_gid)
     for part in relative.parts[:-1]:
         current = current / part
         info = current.lstat()
@@ -95,7 +97,9 @@ def _validate_intent_file(path, root, service_uid, allow_symlink=False):
                 'Intent source parent is not a regular directory')
         require(_intent_owner_allowed(info.st_uid, service_uid),
                 'Intent source parent has an unexpected owner')
-        require(not info.st_mode & 0o022, 'Intent source parent is writable by others')
+        require(not info.st_mode & 0o002, 'Intent source parent is writable by others')
+        require(not info.st_mode & 0o020 or info.st_gid in (0, service_gid),
+                'Intent source parent has an untrusted writable group')
     info = path.lstat()
     if stat.S_ISLNK(info.st_mode):
         require(allow_symlink, f'Intent file is a symlink: {path}')
@@ -106,12 +110,16 @@ def _validate_intent_file(path, root, service_uid, allow_symlink=False):
         require(stat.S_ISREG(target_info.st_mode), f'Intent file is not regular: {path}')
         require(_intent_owner_allowed(target_info.st_uid, service_uid),
                 f'Intent file has an unexpected owner: {path}')
-        require(not target_info.st_mode & 0o022, f'Intent file is writable by others: {path}')
+        require(not target_info.st_mode & 0o002, f'Intent file is writable by others: {path}')
+        require(not target_info.st_mode & 0o020 or target_info.st_gid in (0, service_gid),
+                f'Intent file has an untrusted writable group: {path}')
     else:
         require(stat.S_ISREG(info.st_mode), f'Intent file is not regular: {path}')
         require(_intent_owner_allowed(info.st_uid, service_uid),
                 f'Intent file has an unexpected owner: {path}')
-        require(not info.st_mode & 0o022, f'Intent file is writable by others: {path}')
+        require(not info.st_mode & 0o002, f'Intent file is writable by others: {path}')
+        require(not info.st_mode & 0o020 or info.st_gid in (0, service_gid),
+                f'Intent file has an untrusted writable group: {path}')
 
 
 _SENSITIVE_DIAGNOSTIC = re.compile(
@@ -669,15 +677,15 @@ with tempfile.TemporaryDirectory(prefix='lifecycle-write-', dir=data) as tempora
                 users.add(int(values['User']))
         require(len(users) == 1, 'original Intent needs one graphical session user')
         account = pwd.getpwuid(users.pop())
-        _validate_intent_file(INTENT_CONFIG, INTENT_CONFIG.parent, account.pw_uid)
-        _validate_intent_file(INTENT_APP / 'main.py', INTENT_APP, account.pw_uid)
-        _validate_intent_file(INTENT_APP / '.venv/pyvenv.cfg', INTENT_APP, account.pw_uid)
-        _validate_intent_file(INTENT_APP / '.venv/bin/python', INTENT_APP, account.pw_uid,
+        _validate_intent_file(INTENT_CONFIG, INTENT_CONFIG.parent, account.pw_uid, account.pw_gid)
+        _validate_intent_file(INTENT_APP / 'main.py', INTENT_APP, account.pw_uid, account.pw_gid)
+        _validate_intent_file(INTENT_APP / '.venv/pyvenv.cfg', INTENT_APP, account.pw_uid, account.pw_gid)
+        _validate_intent_file(INTENT_APP / '.venv/bin/python', INTENT_APP, account.pw_uid, account.pw_gid,
                               allow_symlink=True)
         require(os.access(INTENT_APP / '.venv/bin/python', os.X_OK),
                 'original Intent Python is not executable')
         for path in sorted((INTENT_APP / 'src').rglob('*.py')):
-            _validate_intent_file(path, INTENT_APP, account.pw_uid)
+            _validate_intent_file(path, INTENT_APP, account.pw_uid, account.pw_gid)
         return {'version': state.stdout.splitlines()[1], 'uid': account.pw_uid,
                 'gid': account.pw_gid, 'home': account.pw_dir,
                 'identity': {str(path): sha256(path) for path in files}}
